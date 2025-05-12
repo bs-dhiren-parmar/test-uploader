@@ -1,0 +1,161 @@
+name: Augmet Desktop App Build
+
+on:
+    push:
+        branches: ["master"]
+    pull_request:
+        types: [closed]
+        branches: ["master"]
+permissions:
+  contents: read
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+    conventional-commits:
+        name: Conventional Commits
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+            pull-requests: read
+        steps:
+            - uses: actions/checkout@v3
+              with:
+                fetch-depth: 0
+
+            - name: Get PR Info
+              if: github.event_name == 'pull_request'
+              id: pr_info
+              uses: actions/github-script@v6
+              with:
+                script: |
+                  const pr = await github.rest.pulls.get({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    pull_number: context.issue.number
+                  });
+                  return {
+                    title: pr.data.title,
+                    body: pr.data.body
+                  };
+
+            - name: Process Version for PR
+              if: github.event_name == 'pull_request'
+              id: version
+              uses: actions/github-script@v6
+              with:
+                script: |
+                  const title = '${{ steps.pr_info.outputs.title }}';
+                  const body = '${{ steps.pr_info.outputs.body }}';
+                  
+                  // Extract version from PR title or body
+                  const versionMatch = (title + ' ' + body).match(/version:\s*(\d+\.\d+\.\d+)/i);
+                  if (versionMatch) {
+                    core.setOutput('version', versionMatch[1]);
+                    return;
+                  }
+                  
+                  // If no version found, use conventional commit format
+                  const commitMatch = title.match(/^(feat|fix|docs|style|refactor|perf|test|chore)(\(.+\))?:\s*(.+)/i);
+                  if (commitMatch) {
+                    core.setOutput('version', 'patch');
+                    return;
+                  }
+                  
+                  core.setFailed('No valid version or conventional commit format found in PR');
+
+            - name: Process Version for Direct Push
+              if: github.event_name == 'push'
+              uses: webiny/action-conventional-commits@v1.2.0
+              with:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+                  allowed-commit-types: "docs,fix,feat,chore,style,refactor,perf,test"
+
+    ubuntu-build:
+        runs-on: ubuntu-latest
+        needs: conventional-commits
+        permissions:
+            contents: write
+            pull-requests: write
+
+        steps:
+            - name: Check out Git repository
+              uses: actions/checkout@v2
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 18
+
+            - name: Build Augmet Desktop App
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  npm install --save-dev @electron-forge/cli
+                  npx electron-forge import
+                  npm run make
+                  ls ./out/make/deb/x64/
+
+            - name: Upload App to Artifacts
+              uses: actions/upload-artifact@v4.3.1
+              with:
+                  name: Augmet_Desktop_App_linux
+                  path: |
+                      ./out/make/deb/x64/augmet-uploader*.deb
+
+    windows-build:
+        runs-on: windows-latest
+        needs: conventional-commits
+        permissions:
+            contents: write
+            pull-requests: write
+
+        steps:
+            - name: Check out Git repository
+              uses: actions/checkout@v2
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v4
+              with:
+                  node-version: 18
+
+            - name: Build Augmet Desktop App
+              env:
+                  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                  npm install --save-dev @electron-forge/cli
+                  npx electron-forge import
+                  npm run make
+                  ls ./out/make/squirrel.windows/x64/
+
+            - name: Upload App to Artifacts
+              uses: actions/upload-artifact@v4.3.1
+              with:
+                  name: Augmet_Desktop_App_Win
+                  path: |
+                      ./out/make/squirrel.windows/x64/augmet_uploader*.exe
+
+    release-tag:
+        runs-on: ubuntu-latest
+        needs:
+            - ubuntu-build
+            - windows-build
+        permissions:
+            contents: write
+            pull-requests: write
+
+        steps:
+            - uses: actions/checkout@v4
+            - name: Download artifacts
+              uses: actions/download-artifact@v4.1.2
+            - name: Display structure of downloaded files
+              run: ls -R
+            - name: Bump Version and Push Tag
+              id: tag_version
+              uses: mathieudutour/github-tag-action@v6.1
+              with:
+                  github_token: ${{ secrets.GITHUB_TOKEN }}
+            - name: Create Release and Upload assets
+              run: |
+                  gh release create ${{ steps.tag_version.outputs.new_tag }} --generate-notes Augmet_Desktop_App_linux/*deb Augmet_Desktop_App_Win/*exe   
