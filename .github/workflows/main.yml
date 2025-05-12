@@ -42,7 +42,7 @@ jobs:
 
             - name: Process Version for PR
               if: github.event_name == 'pull_request'
-              id: version
+              id: pr_version
               uses: actions/github-script@v6
               with:
                 script: |
@@ -84,7 +84,7 @@ jobs:
 
             - name: Process Version for Direct Push
               if: github.event_name == 'push'
-              id: version
+              id: push_version
               uses: webiny/action-conventional-commits@v1.2.0
               with:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -173,13 +173,12 @@ jobs:
               id: tag_version
               run: |
                 if [ "${{ github.event_name }}" == "pull_request" ]; then
-                  echo "new_tag=v${{ needs.conventional-commits.outputs.version }}" >> $GITHUB_OUTPUT
+                  echo "new_tag=v${{ needs.conventional-commits.outputs.pr_version }}" >> $GITHUB_OUTPUT
                 else
-                  echo "new_tag=v${{ needs.conventional-commits.outputs.version }}" >> $GITHUB_OUTPUT
+                  echo "new_tag=v${{ needs.conventional-commits.outputs.push_version }}" >> $GITHUB_OUTPUT
                 fi
                 git tag ${{ steps.tag_version.outputs.new_tag }}
                 git push origin ${{ steps.tag_version.outputs.new_tag }}
             - name: Create Release and Upload assets
               run: |
                   gh release create ${{ steps.tag_version.outputs.new_tag }} --generate-notes Augmet_Desktop_App_linux/*deb Augmet_Desktop_App_Win/*exe   
-
