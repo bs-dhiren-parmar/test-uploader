@@ -16,7 +16,7 @@ Clone the project on your machine and then run these commands
 `$ npm run make`
 
 #### NOTE
-* We will need Windows to build the exe, Linux to build deb, rpg and Mac to build dgm. pkg
+* We will need Windows to build the exe, Linux to build deb, .rpg and Mac to build dgm. pkg
 
 ### Release Tag
 * Use fix: in the commit message for **Path** fixes release tag.
