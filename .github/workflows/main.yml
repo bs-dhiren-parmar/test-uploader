@@ -3,6 +3,9 @@ name: Augmet Desktop App Build
 on:
     push:
         branches: ["master"]
+    pull_request:
+        types: [closed]
+        branches: ["master"]
 permissions:
   contents: read
 
