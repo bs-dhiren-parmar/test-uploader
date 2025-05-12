@@ -50,7 +50,7 @@ jobs:
                   const body = '${{ steps.pr_info.outputs.body }}';
                   
                   // Extract version from PR title or body
-                  const versionMatch = (title + ' ' + body).match(/version:\s*(\d+\.\d+\.\d+)/i);
+                  const versionMatch = (title + ' ' + body).match(/v\s*(\d+\.\d+\.\d+)/i);
                   if (versionMatch) {
                     core.setOutput('version', versionMatch[1]);
                     return;
@@ -59,7 +59,24 @@ jobs:
                   // If no version found, use conventional commit format
                   const commitMatch = title.match(/^(feat|fix|docs|style|refactor|perf|test|chore)(\(.+\))?:\s*(.+)/i);
                   if (commitMatch) {
-                    core.setOutput('version', 'patch');
+                    // Get the latest tag
+                    const tags = await github.rest.repos.listTags({
+                      owner: context.repo.owner,
+                      repo: context.repo.repo
+                    });
+                    
+                    let latestVersion = '0.0.0';
+                    if (tags.data.length > 0) {
+                      const versionMatch = tags.data[0].name.match(/v?(\d+\.\d+\.\d+)/);
+                      if (versionMatch) {
+                        latestVersion = versionMatch[1];
+                      }
+                    }
+                    
+                    // Increment patch version
+                    const [major, minor, patch] = latestVersion.split('.').map(Number);
+                    const newVersion = `${major}.${minor}.${patch + 1}`;
+                    core.setOutput('version', newVersion);
                     return;
                   }
                   
@@ -67,6 +84,7 @@ jobs:
 
             - name: Process Version for Direct Push
               if: github.event_name == 'push'
+              id: version
               uses: webiny/action-conventional-commits@v1.2.0
               with:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -151,11 +169,16 @@ jobs:
               uses: actions/download-artifact@v4.1.2
             - name: Display structure of downloaded files
               run: ls -R
-            - name: Bump Version and Push Tag
+            - name: Create Git Tag
               id: tag_version
-              uses: mathieudutour/github-tag-action@v6.1
-              with:
-                  github_token: ${{ secrets.GITHUB_TOKEN }}
+              run: |
+                if [ "${{ github.event_name }}" == "pull_request" ]; then
+                  echo "new_tag=v${{ needs.conventional-commits.outputs.version }}" >> $GITHUB_OUTPUT
+                else
+                  echo "new_tag=v${{ needs.conventional-commits.outputs.version }}" >> $GITHUB_OUTPUT
+                fi
+                git tag ${{ steps.tag_version.outputs.new_tag }}
+                git push origin ${{ steps.tag_version.outputs.new_tag }}
             - name: Create Release and Upload assets
               run: |
                   gh release create ${{ steps.tag_version.outputs.new_tag }} --generate-notes Augmet_Desktop_App_linux/*deb Augmet_Desktop_App_Win/*exe   
