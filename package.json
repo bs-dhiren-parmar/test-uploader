@@ -1,0 +1,87 @@
+{
+  "name": "augmet_uploader",
+  "productName": "augmet_uploader",
+  "version": "1.0.0",
+  "description": "File Uploader for Augmet",
+  "main": "src/main.js",
+  "scripts": {
+    "start": "electron-forge start -- --no-sandbox",
+    "package": "electron-forge package",
+    "make": "electron-forge make",
+    "publish": "electron-forge publish",
+    "prettier-format": "prettier --config .prettierrc 'src/**/*.js' 'src/**/*.html' --write",
+    "lint": "echo \"No linting configured\""
+  },
+  "keywords": [],
+  "license": "MIT",
+  "author": "Augmet",
+  "config": {
+    "forge": {
+      "packagerConfig": {
+        "icon": "./icon.ico"
+      },
+      "makers": [
+        {
+          "name": "@electron-forge/maker-squirrel",
+          "config": {
+            "icon": "./icon.ico",
+            "setupIcon": "./icon.ico"
+          }
+        },
+        {
+          "name": "@electron-forge/maker-zip",
+          "platforms": [
+            "darwin"
+          ]
+        },
+        {
+          "name": "@electron-forge/maker-deb",
+          "config": {
+            "name": "Augmet Uploader",
+            "icon": "./icon.png"
+          }
+        },
+        {
+          "name": "@electron-forge/maker-rpm",
+          "config": {
+            "name": "Augmet Uploader",
+            "icon": "./icon.png"
+          }
+        },
+        {
+          "name": "@electron-forge/maker-dmg",
+          "config": {
+            "background": "./icon.png",
+            "format": "ULFO"
+          }
+        },
+        {
+          "name": "@electron-forge/maker-pkg",
+          "config": {
+            "keychain": "my-secret-ci-keychain"
+          }
+        }
+      ]
+    }
+  },
+  "dependencies": {
+    "aws-sdk": "^2.1200.0",
+    "axios": "^0.27.2",
+    "chosen-js": "^1.8.7",
+    "datatables.net-dt": "^1.13.4",
+    "electron-squirrel-startup": "^1.0.0",
+    "jquery": "^3.6.0",
+    "mime": "^3.0.0"
+  },
+  "devDependencies": {
+    "@electron-forge/cli": "^ 6.0.0-beta.5",
+    "@electron-forge/maker-deb": "^ 6.0.0-beta.5",
+    "@electron-forge/maker-dmg": "^ 6.0.0-beta.5",
+    "@electron-forge/maker-pkg": "^ 6.0.0-beta.5",
+    "@electron-forge/maker-rpm": "^ 6.0.0-beta.5",
+    "@electron-forge/maker-squirrel": "^ 6.0.0-beta.5",
+    "@electron-forge/maker-zip": "^ 6.0.0-beta.5",
+    "electron": "^20.0.0",
+    "prettier": "^2.2.1"
+  }
+}

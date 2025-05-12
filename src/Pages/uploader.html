@@ -1,0 +1,84 @@
+<div class="template h-100" data-template="uploader">
+    <div class="bg-light page-header p-5 pb-2">
+        <div class="d-flex align-items-center">
+            <h2 id="pageTitle m-0">Uploader</h2>
+            <h5 class="version m-0 mx-2"></h5>
+        </div>
+        <div>
+            <div>
+                <button class="btn btn-primary" onClick="fetchPatients();">Refetch Patients</button>
+                <button class="btn btn-secondary" id="logoutBtn">Logout</button>
+            </div>
+            <div class="userInfo mt-2"></div>
+        </div>
+    </div>
+    <ul class="bg-light nav nav-tabs justify-content-center" id="myTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button
+                class="nav-link active"
+                id="uploader-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#uploader"
+                type="button"
+                role="tab"
+                aria-controls="uploader"
+                aria-selected="true"
+            >
+                Uploader
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button
+                class="nav-link"
+                id="file-list-tab"
+                data-bs-toggle="tab"
+                data-bs-target="#file-list"
+                type="button"
+                role="tab"
+                aria-controls="file-list"
+                aria-selected="false"
+            >
+                File List
+            </button>
+        </li>
+    </ul>
+    <div class="p-4">
+        <div class="tab-content" id="myTabContent">
+            <div class="tab-pane fade show active" id="uploader" role="tabpanel" aria-labelledby="uploader-tab">
+                <div id="patientProcessing" class="dataTables_processing" style="display: none">
+                    <div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                        <div></div>
+                    </div>
+                </div>
+                <div id="uploderContent">
+                    <div id="sampleCards"></div>
+                    <div class="col-12 text-end mb-2">
+                        <button class="btn btn-link text-decoration-none" id="addSampleCard">+ Add More Sample</button>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="file-list" role="tabpanel" aria-labelledby="file-list-tab">
+                <table id="myTable" class="display" style="width: 100%">
+                    <thead>
+                        <tr>
+                            <th>File Name</th>
+                            <th>Original File Name</th>
+                            <th>Status</th>
+                            <th>Upload progress</th>
+                            <th>Patient-MRN</th>
+                            <th>Visit Id</th>
+                            <th>Sample Id</th>
+                            <th>Created At</th>
+                            <th>Upload Completed At</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script src="./Pages/uploader.js"></script>
+</div>
