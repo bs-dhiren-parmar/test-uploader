@@ -109,4 +109,4 @@ jobs:
                   github_token: ${{ secrets.GITHUB_TOKEN }}
             - name: Create Release and Upload assets
               run: |
-                  gh release create ${{ steps.tag_version.outputs.new_tag }}
+                  release create ${{ steps.tag_version.outputs.new_tag }}
