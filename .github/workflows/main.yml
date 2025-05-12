@@ -3,9 +3,6 @@ name: Augmet Desktop App Build
 on:
     push:
         branches: ["master"]
-    pull_request:
-        types: [closed]
-        branches: ["master"]
 permissions:
   contents: read
 
@@ -18,76 +15,10 @@ jobs:
         runs-on: ubuntu-latest
         permissions:
             contents: read
-            pull-requests: read
         steps:
             - uses: actions/checkout@v3
-              with:
-                fetch-depth: 0
 
-            - name: Get PR Info
-              if: github.event_name == 'pull_request'
-              id: pr_info
-              uses: actions/github-script@v6
-              with:
-                script: |
-                  const pr = await github.rest.pulls.get({
-                    owner: context.repo.owner,
-                    repo: context.repo.repo,
-                    pull_number: context.issue.number
-                  });
-                  return {
-                    title: pr.data.title,
-                    body: pr.data.body
-                  };
-
-            - name: Process Version for PR
-              if: github.event_name == 'pull_request'
-              id: pr_version
-              uses: actions/github-script@v6
-              with:
-                script: |
-                  const title = '${{ steps.pr_info.outputs.title }}';
-                  const body = '${{ steps.pr_info.outputs.body }}';
-                  
-                  // Extract version from PR title or body
-                  echo "title=${title}"
-                  echo "body=${body}"
-                  const versionMatch = (title + ' ' + body).match(/v\s*(\d+\.\d+\.\d+)/i);
-                  if (versionMatch) {
-                    core.setOutput('version', versionMatch[1]);
-                    return;
-                  }
-                  
-                  // If no version found, use conventional commit format
-                  const commitMatch = title.match(/^(feat|fix|docs|style|refactor|perf|test|chore)(\(.+\))?:\s*(.+)/i);
-                  if (commitMatch) {
-                    // Get the latest tag
-                    const tags = await github.rest.repos.listTags({
-                      owner: context.repo.owner,
-                      repo: context.repo.repo
-                    });
-                    
-                    let latestVersion = '0.0.0';
-                    if (tags.data.length > 0) {
-                      const versionMatch = tags.data[0].name.match(/v?(\d+\.\d+\.\d+)/);
-                      if (versionMatch) {
-                        latestVersion = versionMatch[1];
-                      }
-                    }
-                    
-                    // Increment patch version
-                    const [major, minor, patch] = latestVersion.split('.').map(Number);
-                    const newVersion = `${major}.${minor}.${patch + 1}`;
-                    core.setOutput('version', newVersion);
-                    return;
-                  }
-                  
-                  core.setFailed('No valid version or conventional commit format found in PR');
-
-            - name: Process Version for Direct Push
-              if: github.event_name == 'push'
-              id: push_version
-              uses: webiny/action-conventional-commits@v1.2.0
+            - uses: webiny/action-conventional-commits@v1.2.0
               with:
                   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
                   allowed-commit-types: "docs,fix,feat,chore,style,refactor,perf,test"
@@ -171,16 +102,11 @@ jobs:
               uses: actions/download-artifact@v4.1.2
             - name: Display structure of downloaded files
               run: ls -R
-            - name: Create Git Tag
+            - name: Bump Version and Push Tag
               id: tag_version
-              run: |
-                if [ "${{ github.event_name }}" == "pull_request" ]; then
-                  echo "new_tag=v${{ needs.conventional-commits.outputs.pr_version }}" >> $GITHUB_OUTPUT
-                else
-                  echo "new_tag=v${{ needs.conventional-commits.outputs.push_version }}" >> $GITHUB_OUTPUT
-                fi
-                git tag ${{ steps.tag_version.outputs.new_tag }}
-                git push origin ${{ steps.tag_version.outputs.new_tag }}
+              uses: mathieudutour/github-tag-action@v6.1
+              with:
+                  github_token: ${{ secrets.GITHUB_TOKEN }}
             - name: Create Release and Upload assets
               run: |
                   gh release create ${{ steps.tag_version.outputs.new_tag }} --generate-notes Augmet_Desktop_App_linux/*deb Augmet_Desktop_App_Win/*exe   
