@@ -6,7 +6,7 @@
 1. A clone of this repo on your local machine
 
 ### Project
-Clone project on your machine and after run these commands
+Clone the project on your machine and then run these commands
 
 `$ npm install`
 
@@ -17,7 +17,7 @@ Clone project on your machine and after run these commands
 ### Make exe, deb, pkg, dgm use
 `$ npm run make`
 #### NOTE
-* We will need the windows to build exe, linux to build deb, rpg and mac to build dgm. pkg
+* We will need Windows to build the exe, Linux to build deb, rpg and Mac to build dgm. pkg
 
 ### Release Tag 
 * Use fix: in the commit message for **Path** fixes release tag.
