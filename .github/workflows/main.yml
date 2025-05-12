@@ -50,6 +50,8 @@ jobs:
                   const body = '${{ steps.pr_info.outputs.body }}';
                   
                   // Extract version from PR title or body
+                  echo "title=${title}"
+                  echo "body=${body}"
                   const versionMatch = (title + ' ' + body).match(/v\s*(\d+\.\d+\.\d+)/i);
                   if (versionMatch) {
                     core.setOutput('version', versionMatch[1]);
