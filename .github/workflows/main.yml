@@ -109,4 +109,4 @@ jobs:
                   github_token: ${{ secrets.GITHUB_TOKEN }}
             - name: Create Release and Upload assets
               run: |
-                  gh release create ${{ steps.tag_version.outputs.new_tag }} --generate-notes Augmet_Desktop_App_linux/*deb Augmet_Desktop_App_Win/*exe   
+                  gh release create ${{ steps.tag_version.outputs.new_tag }} --generate-notes
