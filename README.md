@@ -7,15 +7,14 @@
 
 ### Project
 Clone the project on your machine and then run these commands
-
 `$ npm install`
 
 ### Start the project
 `$ npm start`
 
-
 ### Make exe, deb, pkg, dgm use
 `$ npm run make`
+
 #### NOTE
 * We will need Windows to build the exe, Linux to build deb, rpg and Mac to build dgm. pkg
 
