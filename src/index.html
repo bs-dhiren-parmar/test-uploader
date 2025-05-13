@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <title>Augmet Uploader</title>
+        <meta charset="utf-8" />
+        <meta http-equiv="Content-Security-Policy" content="script-src 'self' 'unsafe-inline'" />
+
+        <!-- css -->
+        <link rel="stylesheet" href="./stylesheets/bootstrap.min.css" />
+        <link rel="stylesheet" href="./stylesheets/datatables.min.css" />
+        <link rel="stylesheet" href="./stylesheets/chosen.min.css" />
+        <link rel="stylesheet" href="./stylesheets/index.css" />
+    </head>
+    <body>
+        <div id="main"></div>
+        <script src="./utils/popper.min.js"></script>
+        <script src="./utils/bootstrap.min.js"></script>
+        <script type="text/javascript">
+            const {checkFunction} = require("./utils/index");
+            window.jQuery = window.$ = require("jquery");
+            require("chosen-js/chosen.jquery.js");
+            checkFunction();
+        </script>
+        <script src="./utils/jquery.dataTables.js"></script>
+    </body>
+</html>
