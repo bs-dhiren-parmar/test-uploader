@@ -302,3 +302,6 @@ ipcMain.handle('getFileStats', async (event, { filePath }) => {
     return { success: false, error: error.message };
   }
 });
+
+
+
