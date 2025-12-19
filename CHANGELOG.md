@@ -1,3 +1,10 @@
+## [1.2.1](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.2.0...v1.2.1) (2025-12-19)
+
+
+### Bug Fixes
+
+*  formatting of BREAKING CHANGE in README. BREAKING CHANGE ([8e7bee4](https://github.com/bs-dhiren-parmar/test-uploader/commit/8e7bee4fed40d8024d3039e574eb62d852448264))
+
 # [1.2.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.1.1...v1.2.0) (2025-12-19)
 
 
