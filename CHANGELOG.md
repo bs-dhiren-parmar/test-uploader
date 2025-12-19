@@ -1,3 +1,16 @@
+# [2.0.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.2.1...v2.0.0) (2025-12-19)
+
+
+### Performance Improvements
+
+* **pencil:** remove graphiteWidth option ([060da5d](https://github.com/bs-dhiren-parmar/test-uploader/commit/060da5dfc626e98464b0552e26f8b340401c1dd7))
+
+
+### BREAKING CHANGES
+
+* **pencil:** The graphiteWidth option has been removed.
+The default graphite width of 10mm is always used for performance reasons.
+
 ## [1.2.1](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.2.0...v1.2.1) (2025-12-19)
 
 
