@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.0.0...v1.0.1) (2025-12-19)
+
+
+### Bug Fixes
+
+* Document commit message conventions ([2801f77](https://github.com/bs-dhiren-parmar/test-uploader/commit/2801f7700286f7147c6d86ba76f604ee71a14f2f))
+
 # 1.0.0 (2025-12-19)
 
 
