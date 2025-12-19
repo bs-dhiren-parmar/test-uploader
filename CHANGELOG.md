@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.1.0...v1.1.1) (2025-12-19)
+
+
+### Performance Improvements
+
+* Mojor release check ([9860b55](https://github.com/bs-dhiren-parmar/test-uploader/commit/9860b558677d99522f6941e86d4962511b09f9be))
+
 # [1.1.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.0.1...v1.1.0) (2025-12-19)
 
 
