@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.1.1...v1.2.0) (2025-12-19)
+
+
+### Features
+
+* Update commit type for breaking changes in README BREAKING CAHNGE: ([218f621](https://github.com/bs-dhiren-parmar/test-uploader/commit/218f6211508be606e0d1916a0c68338b8eabac1c))
+
 ## [1.1.1](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.1.0...v1.1.1) (2025-12-19)
 
 
