@@ -1,0 +1,207 @@
+/* Sample Card Styles */
+.sample-card {
+  background: #f8f9fa;
+  border-radius: 8px;
+  overflow: visible;
+  position: relative;
+}
+
+.card-loading {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.card-header {
+  padding: 1.5rem;
+}
+
+.card-form {
+  width: 100%;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1.5fr auto;
+  gap: 1rem;
+  align-items: start;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-label {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #333;
+}
+
+.form-label.required::after {
+  content: ' *';
+  color: #dc3545;
+}
+
+.form-input {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  border: 1px solid #ced4da;
+  border-radius: 4px;
+  width: 100%;
+}
+
+.form-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}
+
+.form-input:disabled {
+  background: #e9ecef;
+  cursor: not-allowed;
+}
+
+/* React Select customization */
+.react-select .select__control {
+  min-height: 38px;
+  border-color: #ced4da;
+}
+
+.react-select .select__control:hover {
+  border-color: #adb5bd;
+}
+
+.react-select .select__control--is-focused {
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.15);
+}
+
+.react-select .select__menu {
+  z-index: 9999 !important;
+  position: absolute !important;
+}
+
+.react-select .select__menu-list {
+  max-height: 200px;
+}
+
+/* Sample group specific */
+.sample-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.sample-divider {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #6c757d;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  margin: 0.25rem 0;
+}
+
+.sample-divider::before,
+.sample-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #dee2e6;
+  margin: 0 0.5rem;
+}
+
+.new-sample-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.new-sample-row .form-input {
+  flex: 1;
+}
+
+.new-sample-row .btn {
+  white-space: nowrap;
+}
+
+.error-message {
+  font-size: 0.75rem;
+  color: #dc3545;
+}
+
+/* Close button */
+.close-group {
+  display: flex;
+  align-items: flex-start;
+  padding-top: 1.5rem;
+}
+
+.btn-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  color: #dc3545;
+  font-weight: bold;
+  cursor: pointer;
+  transition: all 0.15s ease-in-out;
+}
+
+.btn-close:hover {
+  background: #dc3545;
+  border-color: #dc3545;
+  color: white;
+}
+
+/* Card body */
+.card-body {
+  padding: 0 1.5rem 1.5rem;
+}
+
+.upload-actions {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+  .form-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .sample-group {
+    grid-column: span 2;
+  }
+
+  .close-group {
+    grid-column: span 2;
+    justify-content: flex-end;
+    padding-top: 0;
+  }
+}
+
+@media (max-width: 576px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .sample-group,
+  .close-group {
+    grid-column: span 1;
+  }
+}
