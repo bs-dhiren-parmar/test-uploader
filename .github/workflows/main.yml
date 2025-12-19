@@ -33,7 +33,7 @@ jobs:
     needs: conventional-commits
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     permissions:
-      contents: read
+      contents: write
     outputs:
       new_version: ${{ steps.semantic.outputs.new_release_version }}
       should_release: ${{ steps.semantic.outputs.new_release_published }}
