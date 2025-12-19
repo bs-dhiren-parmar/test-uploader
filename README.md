@@ -1,6 +1,6 @@
 # Augmet Desktop Uploader
 
-A desktop application for uploading medical/genomic files to the Augmet platform. Built with **Electron**, **React**, **TypeScript**, and **Vite**.
+A desktop application for uploading medical/genomic files to the Augmet platform. Built with **Electron**, **React**, **TypeScript**, and **Vite**
 
 ## Features
 
