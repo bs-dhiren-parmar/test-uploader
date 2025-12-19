@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.0.1...v1.1.0) (2025-12-19)
+
+
+### Features
+
+*  Update README.md for clarity and commit message conventions ([9a07203](https://github.com/bs-dhiren-parmar/test-uploader/commit/9a07203b2e6aa3f1480ef00c3f16e997f3e1b7cc))
+
 ## [1.0.1](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.0.0...v1.0.1) (2025-12-19)
 
 
