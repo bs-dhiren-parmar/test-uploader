@@ -107,13 +107,12 @@ This project uses **Conventional Commits** for semantic versioning. The commit m
 
 | Commit Type | Version Bump | Description |
 |-------------|--------------|-------------|
-| `BREAKING CHANGE` | **Major** | Breaking change (bumps major version e.g., 1.0.0 → 2.0.0) |
+| `perf: ` | **Major** | Breaking change (bumps major version e.g., 1.0.0 → 2.0.0) |
 | `feat:` | **Minor** | New feature (bumps minor version e.g., 1.0.0 → 1.1.0) |
 | `fix:` | **Patch** | Bug fix (bumps patch version e.g., 1.0.0 → 1.0.1) |
 | `docs:` | None | Documentation changes only |
 | `style:` | None | Code style changes (formatting, semicolons, etc.) |
 | `refactor:` | None | Code refactoring without feature or fix |
-| `perf:` | Patch | Performance improvements |
 | `test:` | None | Adding or updating tests |
 | `chore:` | None | Build process or auxiliary tool changes |
 
