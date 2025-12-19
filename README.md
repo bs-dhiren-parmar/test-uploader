@@ -1,4 +1,4 @@
-# Augmet Desktop Uploader 
+# Augmet Desktop Uploader
 
 A desktop application for uploading medical/genomic files to the Augmet platform. Built with **Electron**, **React**, **TypeScript**, and **Vite**.
 
@@ -98,6 +98,7 @@ augmet-desktop/
 - **Axios** - HTTP client
 - **React Router** - Navigation
 - **React Select** - Enhanced select components
+
 ## Commit Message Convention
 
 This project uses **Conventional Commits** for semantic versioning. The commit message format determines version bumps automatically:
@@ -106,7 +107,8 @@ This project uses **Conventional Commits** for semantic versioning. The commit m
 
 | Commit Type | Version Bump | Description |
 |-------------|--------------|-------------|
-| `feat:` | **Major** | New feature or significant change (bumps major version e.g., 1.0.0 → 2.0.0) |
+| `BREAKING CHANGE` | **Major** | Breaking change (bumps major version e.g., 1.0.0 → 2.0.0) |
+| `feat:` | **Minor** | New feature (bumps minor version e.g., 1.0.0 → 1.1.0) |
 | `fix:` | **Patch** | Bug fix (bumps patch version e.g., 1.0.0 → 1.0.1) |
 | `docs:` | None | Documentation changes only |
 | `style:` | None | Code style changes (formatting, semicolons, etc.) |
@@ -189,8 +191,3 @@ The application connects to the Augmet API with the following endpoints:
 - **BAM**: `.bam`
 - **BAI**: `.bai`, `.bam.bai`
 - **VCF**: `.vcf`, `.vcf.idx`, `.vcf.gz`
-
-## Release Tag
-- Use fix: in the commit message for Path fixes release tag.
-- Use feat: in the commit message for Minor fixes release tag.
-- Use perf: in the commit message for Major fixes release tag.
