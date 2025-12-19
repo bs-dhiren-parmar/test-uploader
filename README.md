@@ -98,6 +98,44 @@ augmet-desktop/
 - **Axios** - HTTP client
 - **React Router** - Navigation
 - **React Select** - Enhanced select components
+## Commit Message Convention
+
+This project uses **Conventional Commits** for semantic versioning. The commit message format determines version bumps automatically:
+
+### Commit Types and Version Impact
+
+| Commit Type | Version Bump | Description |
+|-------------|--------------|-------------|
+| `feat:` | **Major** | New feature or significant change (bumps major version e.g., 1.0.0 → 2.0.0) |
+| `fix:` | **Patch** | Bug fix (bumps patch version e.g., 1.0.0 → 1.0.1) |
+| `docs:` | None | Documentation changes only |
+| `style:` | None | Code style changes (formatting, semicolons, etc.) |
+| `refactor:` | None | Code refactoring without feature or fix |
+| `perf:` | Patch | Performance improvements |
+| `test:` | None | Adding or updating tests |
+| `chore:` | None | Build process or auxiliary tool changes |
+
+### Commit Message Examples
+
+```bash
+# Major version bump (new feature)
+git commit -m "feat: add multi-file upload support"
+
+# Patch version bump (bug fix)
+git commit -m "fix: resolve file upload timeout issue"
+
+# No version bump
+git commit -m "docs: update README with commit conventions"
+git commit -m "chore: update dependencies"
+```
+
+### Breaking Changes
+
+For breaking changes, add `BREAKING CHANGE:` in the commit body or use `!` after the type:
+
+```bash
+git commit -m "feat!: redesign file upload API"
+```
 
 ## Available Scripts
 
