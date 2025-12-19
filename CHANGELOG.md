@@ -1,3 +1,16 @@
+# [3.0.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v2.0.0...v3.0.0) (2025-12-19)
+
+
+### Bug Fixes
+
+* creating new major version. ([27655c7](https://github.com/bs-dhiren-parmar/test-uploader/commit/27655c7d195ef7f65b71ab83105f6d5383117c69))
+* Fix formatting issue in main.yml ([c6c4dc8](https://github.com/bs-dhiren-parmar/test-uploader/commit/c6c4dc8a412c648dc82a81d6e5edddb7461a543d))
+
+
+### BREAKING CHANGES
+
+* expecting major release version change
+
 # [2.0.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.2.1...v2.0.0) (2025-12-19)
 
 
