@@ -7,7 +7,6 @@ import { validatePatientForm, validateVisitForm, validateSamples, generateVisitI
 import {
     LIFE_STATUS_OPTIONS,
     GENDER_OPTIONS,
-    MARITAL_STATUS_OPTIONS,
     SAMPLE_TYPE_OPTIONS,
     CANCER_TYPE_OPTIONS,
     PREGNANCY_OPTIONS,

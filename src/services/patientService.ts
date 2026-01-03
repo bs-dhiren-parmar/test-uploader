@@ -22,8 +22,8 @@ export const getPatients = async (): Promise<AxiosResponse<ApiResponse<PatientsR
  * Search patients with pagination
  */
 export const searchPatients = async (
-    search: string = '',
-    page: number = 1
+    search = '',
+    page = 1
 ): Promise<AxiosResponse<ApiResponse<PatientsResponse & { hasMore: boolean }>>> => {
     const baseUrl = getBaseUrl();
     return api.get(`${baseUrl}/api/patients/patient?search=${encodeURIComponent(search)}&page=${page}`);
@@ -220,7 +220,7 @@ export interface FetchFromLimsResponse {
 
 export const fetchPatientFromLims = async (
     mrn: string,
-    addNewPatient: boolean = true,
+    addNewPatient = true,
     patientId?: string
 ): Promise<AxiosResponse<ApiResponse<FetchFromLimsResponse>>> => {
     const baseUrl = getBaseUrl();

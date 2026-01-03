@@ -81,24 +81,24 @@ const FileDropTab: React.FC = () => {
     }, []);
 
     // Drag handlers
-    const handleDragOver = (e: DragEvent<HTMLDivElement>): void => {
+    const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>): void => {
         e.preventDefault();
         e.stopPropagation();
-    };
+    }, []);
 
-    const handleDragEnter = (e: DragEvent<HTMLDivElement>): void => {
+    const handleDragEnter = useCallback((e: DragEvent<HTMLDivElement>): void => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragOver(true);
-    };
+    }, []);
 
-    const handleDragLeave = (e: DragEvent<HTMLDivElement>): void => {
+    const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>): void => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragOver(false);
-    };
+    }, []);
 
-    const handleDrop = (e: DragEvent<HTMLDivElement>): void => {
+    const handleDrop = useCallback((e: DragEvent<HTMLDivElement>): void => {
         e.preventDefault();
         e.stopPropagation();
         setIsDragOver(false);
@@ -107,24 +107,24 @@ const FileDropTab: React.FC = () => {
         if (droppedFiles.length > 0) {
             processFiles(droppedFiles);
         }
-    };
+    }, [processFiles]);
 
-    const handleFileSelect = (e: ChangeEvent<HTMLInputElement>): void => {
+    const handleFileSelect = useCallback((e: ChangeEvent<HTMLInputElement>): void => {
         const selectedFiles = Array.from(e.target.files || []);
         if (selectedFiles.length > 0) {
             processFiles(selectedFiles);
         }
         e.target.value = "";
-    };
+    }, [processFiles]);
 
-    const handleBrowseClick = (): void => {
+    const handleBrowseClick = useCallback((): void => {
         fileInputRef.current?.click();
-    };
+    }, []);
 
     /**
      * Handle file type selection from dropdown
      */
-    const handleFileTypeChange = (fileId: string, newType: string): void => {
+    const handleFileTypeChange = useCallback((fileId: string, newType: string): void => {
         setProcessedFiles((prev) =>
             prev.map((pf) => {
                 if (pf.id === fileId) {
@@ -137,7 +137,7 @@ const FileDropTab: React.FC = () => {
                 return pf;
             })
         );
-    };
+    }, []);
 
     // Memoized handlers for JSX props
     const handleFileTypeSelectChange = useCallback((e: ChangeEvent<HTMLSelectElement>) => {
@@ -145,33 +145,33 @@ const FileDropTab: React.FC = () => {
         if (fileId) {
             handleFileTypeChange(fileId, e.target.value);
         }
-    }, []);
+    }, [handleFileTypeChange]);
 
+    /**
+     * Remove a file from the list
+     */
+    const handleRemoveFile = useCallback((fileId: string): void => {
+        setProcessedFiles((prev) => prev.filter((pf) => pf.id !== fileId));
+    }, []);
+    
     const handleRemoveFileClick = useCallback((e: React.MouseEvent<HTMLButtonElement>) => {
         const fileId = e.currentTarget.dataset.fileId;
         if (fileId) {
             handleRemoveFile(fileId);
         }
-    }, []);
-
-    /**
-     * Remove a file from the list
-     */
-    const handleRemoveFile = (fileId: string): void => {
-        setProcessedFiles((prev) => prev.filter((pf) => pf.id !== fileId));
-    };
+    }, [handleRemoveFile]);
 
     /**
      * Clear all files from the list
      */
-    const handleClearAll = (): void => {
+    const handleClearAll = useCallback((): void => {
         setProcessedFiles([]);
-    };
+    }, []);
 
     /**
      * Add valid files to upload queue
      */
-    const handleAddToQueue = async (): Promise<void> => {
+    const handleAddToQueue = useCallback(async (): Promise<void> => {
         const filesToUpload = processedFiles.filter((pf) => pf.isValid && pf.selectedType);
 
         if (filesToUpload.length === 0) {
@@ -208,7 +208,7 @@ const FileDropTab: React.FC = () => {
         } finally {
             setIsAddingToQueue(false);
         }
-    };
+    }, [processedFiles, addFilesToQueue]);
 
     // Calculate summary stats
     const validFilesCount = processedFiles.filter((pf) => pf.isValid && pf.selectedType).length;

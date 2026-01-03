@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, ReactNode } from "react";
+import React, { useState, useRef, useEffect, useCallback, ReactNode } from "react";
 import "../styles/tooltip.css";
 
 type TooltipPosition = "top" | "bottom" | "left" | "right";
@@ -22,25 +22,24 @@ const Tooltip: React.FC<TooltipProps> = ({
     const tooltipRef = useRef<HTMLDivElement>(null);
     const triggerRef = useRef<HTMLSpanElement>(null);
 
-    const showTooltip = () => {
+    const showTooltip = useCallback(() => {
         timeoutRef.current = setTimeout(() => {
             setIsVisible(true);
         }, delay);
-    };
+    }, [delay]);
 
-    const hideTooltip = () => {
+    const hideTooltip = useCallback(() => {
         if (timeoutRef.current) {
             clearTimeout(timeoutRef.current);
             timeoutRef.current = null;
         }
         setIsVisible(false);
-    };
+    }, []);
 
     // Adjust position if tooltip would overflow viewport
     useEffect(() => {
         if (isVisible && tooltipRef.current && triggerRef.current) {
             const tooltipRect = tooltipRef.current.getBoundingClientRect();
-            const triggerRect = triggerRef.current.getBoundingClientRect();
             let newPosition = position;
 
             // Check if tooltip overflows and adjust

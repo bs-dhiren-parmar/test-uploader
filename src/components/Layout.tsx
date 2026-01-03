@@ -1,4 +1,4 @@
-import React, { ReactNode, useState, useEffect } from "react";
+import React, { ReactNode, useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import Icon from "./Icon";
@@ -19,15 +19,15 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
         window.electronAPI?.getAppVersion().then(setAppVersion);
     }, []);
 
-    const handleAddPatients = () => {
+    const handleAddPatients = useCallback(() => {
         setIsModalOpen(true);
-    };
+    }, []);
 
-    const handleModalClose = () => {
+    const handleModalClose = useCallback(() => {
         setIsModalOpen(false);
-    };
+    }, []);
 
-    const handleLogout = async (): Promise<void> => {
+    const handleLogout = useCallback(async (): Promise<void> => {
         // Check for active uploads before logout
         const result = await window.electronAPI?.showCloseConfirmBox();
 
@@ -38,7 +38,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
         await logout();
         navigate("/login");
-    };
+    }, [logout, navigate]);
 
     return (
         <div className="layout">

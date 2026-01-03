@@ -4,8 +4,8 @@
  */
 class Queue<T> {
     private elements: Record<number, T> = {};
-    private head: number = 0;
-    private tail: number = 0;
+    private head = 0;
+    private tail = 0;
 
     /**
      * Add an element to the end of the queue

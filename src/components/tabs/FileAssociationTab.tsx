@@ -87,27 +87,15 @@ const FileAssociationTab: React.FC = () => {
 
     const totalPages = Math.ceil(totalCount / itemsPerPage);
 
-    const handleSelectFile = (fileId: string) => {
-        setSelectedFiles(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(fileId)) {
-                newSet.delete(fileId);
-            } else {
-                newSet.add(fileId);
-            }
-            return newSet;
-        });
-    };
-
-    const handleSelectAll = () => {
+    const handleSelectAll = useCallback(() => {
         if (selectedFiles.size === files.length) {
             setSelectedFiles(new Set());
         } else {
             setSelectedFiles(new Set(files.map(f => f._id)));
         }
-    };
+    }, [selectedFiles, files]);
 
-    const handleDownload = async () => {
+    const handleDownload = useCallback(async () => {
         if (selectedFiles.size === 0) return;
         
         setActionLoading('download');
@@ -154,9 +142,9 @@ const FileAssociationTab: React.FC = () => {
         } finally {
             setActionLoading(null);
         }
-    };
+    }, [selectedFiles]);
 
-    const handleDelete = async () => {
+    const handleDelete = useCallback(async () => {
         if (selectedFiles.size === 0) return;
         
         if (!confirm(`Are you sure you want to delete ${selectedFiles.size} file(s)?`)) {
@@ -176,9 +164,9 @@ const FileAssociationTab: React.FC = () => {
         } finally {
             setActionLoading(null);
         }
-    };
+    }, [selectedFiles, fetchFiles]);
 
-    const handleSingleDownload = async (file: AssociationListItem) => {
+    const handleSingleDownload = useCallback(async (file: AssociationListItem) => {
         if (file.download_url) {
             // Mark file as downloading
             setDownloadingFiles(prev => new Set(prev).add(file._id));
@@ -227,9 +215,9 @@ const FileAssociationTab: React.FC = () => {
                 setActionLoading(null);
             }
         }
-    };
+    }, []);
 
-    const handleSingleDelete = async (fileId: string) => {
+    const handleSingleDelete = useCallback(async (fileId: string) => {
         if (!confirm('Are you sure you want to delete this file?')) {
             return;
         }
@@ -244,25 +232,16 @@ const FileAssociationTab: React.FC = () => {
         } finally {
             setActionLoading(null);
         }
-    };
+    }, [fetchFiles]);
 
-    const handlePageChange = (page: number) => {
+    const handlePageChange = useCallback((page: number) => {
         setCurrentPage(page);
-    };
+    }, []);
 
-    const handleItemsPerPageChange = (items: number) => {
+    const handleItemsPerPageChange = useCallback((items: number) => {
         setItemsPerPage(items);
         setCurrentPage(1);
-    };
-
-    const handleSort = (field: string) => {
-        if (sortField === field) {
-            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
-        } else {
-            setSortField(field);
-            setSortDirection('asc');
-        }
-    };
+    }, []);
 
     // Memoized handlers for JSX props
     const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -355,7 +334,7 @@ const FileAssociationTab: React.FC = () => {
     };
 
     // Truncate file name for display
-    const truncateFileName = (name: string, maxLength: number = 20): string => {
+    const truncateFileName = (name: string, maxLength = 20): string => {
         if (!name) return '-';
         if (name.length <= maxLength) return name;
         return name.substring(0, maxLength) + '...';

@@ -26,7 +26,6 @@ import {
 import type {
     QueueItem,
     KeyObj,
-    FileToUpload,
     ResumeUploadInfo,
     StatusListResponse,
     AssignListResponse,

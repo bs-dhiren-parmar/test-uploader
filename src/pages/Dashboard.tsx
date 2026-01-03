@@ -12,7 +12,7 @@ type TabType = 'file-drop' | 'status' | 'assign-patients' | 'file-association';
 
 const Dashboard: React.FC = () => {
     const navigate = useNavigate();
-    const { isAuthenticated, loading: authLoading, logout } = useAuth();
+    const { isAuthenticated, loading: authLoading } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>('file-drop');
 
     // Redirect if not authenticated

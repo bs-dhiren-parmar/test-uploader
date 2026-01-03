@@ -58,37 +58,25 @@ const AssignPatientsTab: React.FC = () => {
 
     const totalPages = Math.ceil(totalCount / itemsPerPage);
 
-    const handleSelectFile = (fileId: string) => {
-        setSelectedFiles(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(fileId)) {
-                newSet.delete(fileId);
-            } else {
-                newSet.add(fileId);
-            }
-            return newSet;
-        });
-    };
-
-    const handleSelectAll = () => {
+    const handleSelectAll = useCallback(() => {
         if (selectedFiles.size === files.length) {
             setSelectedFiles(new Set());
         } else {
             setSelectedFiles(new Set(files.map(f => f._id)));
         }
-    };
+    }, [selectedFiles, files]);
 
-    const handleAssign = () => {
+    const handleAssign = useCallback(() => {
         if (selectedFiles.size > 0) {
             setIsModalOpen(true);
         }
-    };
+    }, [selectedFiles]);
 
-    const handleModalClose = () => {
+    const handleModalClose = useCallback(() => {
         setIsModalOpen(false);
-    };
+    }, []);
 
-    const handleModalSubmit = async (data: { patientId: string; visitId: string; sampleId: string }) => {
+    const handleModalSubmit = useCallback(async (data: { patientId: string; visitId: string; sampleId: string }) => {
         setSubmitting(true);
         setError(null);
         
@@ -115,16 +103,16 @@ const AssignPatientsTab: React.FC = () => {
         } finally {
             setSubmitting(false);
         }
-    };
+    }, [selectedFiles, fetchFiles]);
 
-    const handlePageChange = (page: number) => {
+    const handlePageChange = useCallback((page: number) => {
         setCurrentPage(page);
-    };
+    }, []);
 
-    const handleItemsPerPageChange = (items: number) => {
+    const handleItemsPerPageChange = useCallback((items: number) => {
         setItemsPerPage(items);
         setCurrentPage(1);
-    };
+    }, []);
 
     // Memoized handlers for JSX props
     const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

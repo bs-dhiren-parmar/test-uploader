@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { fileTypeOptions, statusFilterOptions } from '../../data/mockData';
 import Icon from '../Icon';
 import Pagination from '../Pagination';
@@ -10,7 +10,6 @@ import {
     bulkDownloadV2, 
     bulkDeleteV2,
     cancelFileUploadV2,
-    bulkCancelV2
 } from '../../services/fileUploadService';
 import type { StatusListItem } from '../../types';
 
@@ -83,27 +82,15 @@ const StatusTab: React.FC = () => {
 
     const totalPages = Math.ceil(totalCount / itemsPerPage);
 
-    const handleSelectFile = (fileId: string) => {
-        setSelectedFiles(prev => {
-            const newSet = new Set(prev);
-            if (newSet.has(fileId)) {
-                newSet.delete(fileId);
-            } else {
-                newSet.add(fileId);
-            }
-            return newSet;
-        });
-    };
-
-    const handleSelectAll = () => {
+    const handleSelectAll = useCallback(() => {
         if (selectedFiles.size === files.length) {
             setSelectedFiles(new Set());
         } else {
             setSelectedFiles(new Set(files.map(f => f._id)));
         }
-    };
+    }, [selectedFiles, files]);
 
-    const handleDownload = async () => {
+    const handleDownload = useCallback(async () => {
         if (selectedFiles.size === 0) return;
         
         setActionLoading('download');
@@ -150,9 +137,9 @@ const StatusTab: React.FC = () => {
         } finally {
             setActionLoading(null);
         }
-    };
+    }, [selectedFiles]);
 
-    const handleDelete = async () => {
+    const handleDelete = useCallback(async () => {
         if (selectedFiles.size === 0) return;
         
         if (!confirm(`Are you sure you want to delete ${selectedFiles.size} file(s)?`)) {
@@ -172,9 +159,9 @@ const StatusTab: React.FC = () => {
         } finally {
             setActionLoading(null);
         }
-    };
+    }, [selectedFiles, fetchFiles]);
 
-    const handleRetry = async (fileId: string) => {
+    const handleRetry = useCallback(async (fileId: string) => {
         setActionLoading(fileId);
         try {
             const response = await retryFileUploadV2(fileId);
@@ -187,9 +174,9 @@ const StatusTab: React.FC = () => {
         } finally {
             setActionLoading(null);
         }
-    };
+    }, [fetchFiles]);
 
-    const handleCancel = async (fileId: string) => {
+    const handleCancel = useCallback(async (fileId: string) => {
         if (!confirm('Are you sure you want to cancel this upload?')) {
             return;
         }
@@ -208,9 +195,9 @@ const StatusTab: React.FC = () => {
         } finally {
             setActionLoading(null);
         }
-    };
+    }, [fetchFiles]);
 
-    const handleRestart = async (fileId: string) => {
+    const handleRestart = useCallback(async (fileId: string) => {
         if (!confirm('Are you sure you want to restart this upload?')) {
             return;
         }
@@ -229,9 +216,9 @@ const StatusTab: React.FC = () => {
         } finally {
             setActionLoading(null);
         }
-    };
+    }, [fetchFiles]);
 
-    const handleSingleDownload = async (file: StatusListItem) => {
+    const handleSingleDownload = useCallback(async (file: StatusListItem) => {
         if (file.download_url) {
             // Mark file as downloading
             setDownloadingFiles(prev => new Set(prev).add(file._id));
@@ -280,9 +267,9 @@ const StatusTab: React.FC = () => {
                 setActionLoading(null);
             }
         }
-    };
+    }, []);
 
-    const handleSingleDelete = async (fileId: string) => {
+    const handleSingleDelete = useCallback(async (fileId: string) => {
         if (!confirm('Are you sure you want to delete this file?')) {
             return;
         }
@@ -297,16 +284,16 @@ const StatusTab: React.FC = () => {
         } finally {
             setActionLoading(null);
         }
-    };
+    }, [fetchFiles]);
 
-    const handlePageChange = (page: number) => {
+    const handlePageChange = useCallback((page: number) => {
         setCurrentPage(page);
-    };
+    }, []);
 
-    const handleItemsPerPageChange = (items: number) => {
+    const handleItemsPerPageChange = useCallback((items: number) => {
         setItemsPerPage(items);
         setCurrentPage(1);
-    };
+    }, []);
 
     // Memoized handlers for JSX props
     const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

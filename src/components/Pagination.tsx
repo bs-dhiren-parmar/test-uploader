@@ -99,20 +99,31 @@ const Pagination: React.FC<PaginationProps> = ({
                     ‹
                 </button>
 
-                {getPageNumbers().map((page, index) => (
-                    typeof page === 'number' ? (
-                        <button
-                            key={page}
-                            data-page={page}
-                            className={`pagination-btn ${currentPage === page ? 'active' : ''}`}
-                            onClick={handlePageButtonClick}
-                        >
-                            {page}
-                        </button>
-                    ) : (
-                        <span key={`ellipsis-${index}`} className="pagination-ellipsis">{page}</span>
-                    )
-                ))}
+                {(() => {
+                    const pageNumbers = getPageNumbers();
+                    return pageNumbers.map((page, index) => {
+                        if (typeof page === 'number') {
+                            return (
+                                <button
+                                    key={page}
+                                    data-page={page}
+                                    className={`pagination-btn ${currentPage === page ? 'active' : ''}`}
+                                    onClick={handlePageButtonClick}
+                                >
+                                    {page}
+                                </button>
+                            );
+                        } else {
+                            // Create unique key for ellipsis based on position and surrounding pages
+                            const prevPage = index > 0 ? pageNumbers[index - 1] : null;
+                            const nextPage = index < pageNumbers.length - 1 ? pageNumbers[index + 1] : null;
+                            const ellipsisKey = `ellipsis-${prevPage || 'start'}-${nextPage || 'end'}`;
+                            return (
+                                <span key={ellipsisKey} className="pagination-ellipsis">{page}</span>
+                            );
+                        }
+                    });
+                })()}
 
                 <button
                     className="pagination-btn pagination-nav"

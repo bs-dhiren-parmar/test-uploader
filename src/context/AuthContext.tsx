@@ -77,7 +77,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     /**
      * Login with email, API key, and base URL
      */
-    const login = useCallback(async (email: string, apiKey: string, baseUrl: string, keepLoggedIn: boolean = false): Promise<LoginResult> => {
+    const login = useCallback(async (email: string, apiKey: string, baseUrl: string, keepLoggedIn = false): Promise<LoginResult> => {
         try {
             const response = await authenticateUser(email, apiKey, baseUrl);
 
