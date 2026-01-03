@@ -1,31 +1,102 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useState, useRef, useCallback, ReactNode } from "react";
 import axios, { CancelTokenSource, AxiosError } from "axios";
 import Queue from "../utils/Queue";
 import { CHUNK_SIZE } from "../utils/constants";
 import { getCurrentDateTime, getCurrentChunk, getChunkCount } from "../utils/helpers";
 import {
-    createOrUpdateFileUpload,
+    // V2 APIs for file upload management
+    createFileUploadV2,
+    updateFileUploadV2,
+    getStatusListV2,
+    retryFileUploadV2,
+    bulkDownloadV2,
+    bulkDeleteV2,
+    cancelFileUploadV2,
+    getAssignListV2,
+    assignPatientV2,
+    bulkAssignPatientV2,
+    getAssociationListV2,
+    // V1 APIs for S3 multipart operations (still used for actual file transfer)
     initiateMultipartUpload,
     getSignedUrlsForAllPart,
     completeSignedUrl,
     cancelDeleteFileUpload,
     uploadChunk,
 } from "../services/fileUploadService";
-import type { QueueItem, KeyObj, FileToUpload, ResumeUploadInfo } from "../types";
+import type {
+    QueueItem,
+    KeyObj,
+    FileToUpload,
+    ResumeUploadInfo,
+    StatusListResponse,
+    AssignListResponse,
+    AssociationListResponse,
+    FileUpload,
+} from "../types";
 
-interface UseFileUploadReturn {
-    addFilesToQueue: (filesData: FileToUpload[]) => Promise<void>;
+// ==================== V2 Types ====================
+
+interface FileToUploadV2 {
+    file: File;
+    fileName: string;
+    originalFileName: string;
+    fileType: string;
+    patientId?: string;  // Optional in V2 - can be assigned later
+    visitId?: string;
+    sampleId?: string;
+}
+
+interface PatientAssignData {
+    patient_id: string;
+    visit_id?: string;
+    sample_id?: string;
+}
+
+interface UploadContextV2Value {
+    // Core upload functions
+    addFilesToQueue: (filesData: FileToUploadV2[]) => Promise<void>;
     resumeUpload: (fileInfo: ResumeUploadInfo) => Promise<void>;
     cancelUpload: (fileUploadId: string, status: string) => Promise<void>;
+    
+    // Status state
     isUploading: Record<string, boolean>;
     isCancelAvailable: Record<string, boolean>;
     isUploadInProgress: boolean;
+    
+    // Upload progress callbacks
+    onPartUploaded: (callback: () => void) => () => void; // Register callback, returns unsubscribe function
+    
+    // V2 Status Tab functions
+    getStatusList: (params?: { search?: string; file_type?: string; status?: string; limit?: number; skip?: number }) => Promise<StatusListResponse>;
+    retryUpload: (fileId: string) => Promise<FileUpload>;
+    bulkDownload: (fileIds: string[]) => Promise<Array<{ _id: string; file_name: string; download_url?: string; error?: string }>>;
+    bulkDelete: (fileIds: string[]) => Promise<{ deleted_count: number }>;
+    
+    // V2 Assign Tab functions
+    getAssignList: (params?: { search?: string; file_type?: string; limit?: number; skip?: number }) => Promise<AssignListResponse>;
+    assignPatient: (fileId: string, data: PatientAssignData) => Promise<FileUpload>;
+    bulkAssignPatient: (fileIds: string[], data: PatientAssignData) => Promise<{ assigned_count: number; patient_id: string; visit_id: string; sample_id: string }>;
+    
+    // V2 Association Tab functions
+    getAssociationList: (params: Record<string, unknown>) => Promise<AssociationListResponse>;
 }
 
+interface UploadProviderV2Props {
+    children: ReactNode;
+}
+
+const UploadContextV2 = createContext<UploadContextV2Value | null>(null);
+
 /**
- * Custom hook for managing file uploads with multipart upload support
+ * UploadProviderV2 - V2 version of upload context with deferred patient assignment support
+ * 
+ * Key V2 Features:
+ * - Files can be uploaded without patient assignment
+ * - Patient can be assigned after upload completion
+ * - Bulk operations for download, delete, and patient assignment
+ * - Status, Assign, and Association tab API support
  */
-export function useFileUpload(): UseFileUploadReturn {
+export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) => {
     const [isUploading, setIsUploading] = useState<Record<string, boolean>>({});
     const [isCancelAvailable, setIsCancelAvailable] = useState<Record<string, boolean>>({});
     const [keyObj, setKeyObj] = useState<Record<string, KeyObj>>({});
@@ -38,57 +109,31 @@ export function useFileUpload(): UseFileUploadReturn {
     const isCancelAvailableRef = useRef<Record<string, boolean>>({});
     const keyObjRef = useRef<Record<string, KeyObj>>({});
     const isUploadInProgressRef = useRef<boolean>(false);
+    
+    // Callbacks for part upload events
+    const partUploadCallbacksRef = useRef<Set<() => void>>(new Set());
 
     // Keep refs in sync with state
     isCancelAvailableRef.current = isCancelAvailable;
     keyObjRef.current = keyObj;
     isUploadInProgressRef.current = isUploadInProgress;
 
-    // Clear the upload queue (called when app is closing)
-    const clearQueue = useCallback((): void => {
-        // Cancel current upload if in progress
-        if (cancelTokenSource.current) {
-            cancelTokenSource.current.cancel("App closing - upload cancelled");
-            cancelTokenSource.current = null;
-        }
+    // ==================== Electron API Helpers ====================
 
-        // Clear all items from the queue
-        while (!fileUploadQueue.current.isEmpty) {
-            fileUploadQueue.current.dequeue();
-        }
-
-        // Reset all cancel flags to prevent further processing
-        setIsCancelAvailable({});
-        setIsUploadInProgress(false);
-    }, []);
-
-    // Listen for clear queue event from main process (when app is closing)
-    useEffect(() => {
-        const cleanup = window.electronAPI?.onClearUploadQueue?.(() => {
-            clearQueue();
-        });
-
-        return () => {
-            cleanup?.();
-        };
-    }, [clearQueue]);
-
-    // Update main process with upload status
     const updateIsUploading = useCallback((data: Record<string, boolean>): void => {
         window.electronAPI?.closeActionCheck(data);
     }, []);
 
-    // Update main process with key objects
     const updateKeyObj = useCallback((data: Record<string, unknown>): void => {
         window.electronAPI?.keyObjUpdate(data);
     }, []);
 
-    // Show network error
     const showNetworkError = useCallback((): void => {
         window.electronAPI?.showErrorBox("Network Error", "Please connect to network");
     }, []);
 
-    // Cancel upload with error
+    // ==================== Error Handling ====================
+
     const cancelWithError = useCallback(
         async (errorMessage: string, fileUploadId: string): Promise<void> => {
             try {
@@ -100,7 +145,6 @@ export function useFileUpload(): UseFileUploadReturn {
                 });
 
                 console.error("Upload error:", errorMessage);
-                // Use ref to get current keyObj value (avoids stale closure)
                 await cancelDeleteFileUpload(fileUploadId, "error", keyObjRef.current[fileUploadId], errorMessage);
 
                 setKeyObj((prev) => {
@@ -117,7 +161,8 @@ export function useFileUpload(): UseFileUploadReturn {
         [updateIsUploading, updateKeyObj]
     );
 
-    // Upload a single part
+    // ==================== Part Upload ====================
+
     const handlePartUpload = useCallback(
         async (file: File, partIndex: number, chunkLen: number, key: string, uploadId: string, fileUploadId: string): Promise<boolean> => {
             try {
@@ -127,7 +172,8 @@ export function useFileUpload(): UseFileUploadReturn {
 
                 if (signedUploadResponse.data?.success && signedUploadResponse.data?.data) {
                     const fileData = getCurrentChunk(file, partIndex, CHUNK_SIZE);
-
+                    console.log("signedUploadResponse", signedUploadResponse);
+                    console.log("navigator.onLine: ", navigator.onLine);
                     try {
                         if (navigator.onLine) {
                             cancelTokenSource.current = axios.CancelToken.source();
@@ -137,14 +183,37 @@ export function useFileUpload(): UseFileUploadReturn {
                                 file.type || "application/octet-stream",
                                 cancelTokenSource.current.token
                             );
-
-                            if (navigator.onLine && chunkUploadRes?.headers?.etag) {
-                                await createOrUpdateFileUpload({
-                                    id: fileUploadId,
+                            console.log("chunkUploadRes", chunkUploadRes);
+                            if (navigator.onLine) {
+                                const etag = chunkUploadRes?.headers?.etag;
+                                
+                                if (!etag) {
+                                    // ETag not found - likely S3 CORS issue
+                                    // S3 bucket CORS must expose "ETag" header for multipart uploads
+                                    console.error(
+                                        "ETag header not found in S3 response. " +
+                                        "Ensure S3 bucket CORS configuration exposes 'ETag' header. " +
+                                        "Response headers:", chunkUploadRes?.headers
+                                    );
+                                    throw new Error("ETag not found in S3 response. Check S3 CORS configuration.");
+                                }
+                                
+                                // V2: Update file upload progress
+                                await updateFileUploadV2(fileUploadId, {
                                     file_progress: prog,
-                                    tag: chunkUploadRes.headers.etag.replace(/"/gi, ""),
+                                    tag: etag.replace(/"/gi, ""),
                                     currentIndex: partIndex + 1,
                                 });
+                                
+                                // Notify all registered callbacks that a part was uploaded
+                                partUploadCallbacksRef.current.forEach(callback => {
+                                    try {
+                                        callback();
+                                    } catch (error) {
+                                        console.error('Error in part upload callback:', error);
+                                    }
+                                });
+                                
                                 return true;
                             }
                         } else {
@@ -169,13 +238,14 @@ export function useFileUpload(): UseFileUploadReturn {
         [showNetworkError]
     );
 
-    // Complete upload with all tags
+    // ==================== Complete Upload ====================
+
     const handleCompleteTags = useCallback(
         async (key: string, uploadId: string, fileUploadId: string, fileName: string): Promise<void> => {
             try {
                 await completeSignedUrl(key, uploadId, fileUploadId);
-                await createOrUpdateFileUpload({
-                    id: fileUploadId,
+                // V2: Update file upload to COMPLETED status
+                await updateFileUploadV2(fileUploadId, {
                     status: "COMPLETED",
                     file_progress: "100%",
                     remote_file_path: key,
@@ -199,8 +269,8 @@ export function useFileUpload(): UseFileUploadReturn {
                 console.error("Error completing upload:", error);
                 const axiosError = error as AxiosError;
 
-                await createOrUpdateFileUpload({
-                    id: fileUploadId,
+                // V2: Update file upload to COMPLETED_WITH_ERROR status
+                await updateFileUploadV2(fileUploadId, {
                     status: "COMPLETED_WITH_ERROR",
                     file_progress: "100%",
                 });
@@ -211,7 +281,6 @@ export function useFileUpload(): UseFileUploadReturn {
                     return updated;
                 });
 
-                // Use ref to get current keyObj value (avoids stale closure)
                 await cancelDeleteFileUpload(fileUploadId, "COMPLETED_WITH_ERROR", keyObjRef.current[fileUploadId], axiosError.message);
 
                 setKeyObj((prev) => {
@@ -227,12 +296,15 @@ export function useFileUpload(): UseFileUploadReturn {
         [updateIsUploading, updateKeyObj]
     );
 
-    // Handle file upload
+    // ==================== File Upload Handler ====================
+
     const handleFileUpload = useCallback(
-        async (file: File, patientId: string, fileUploadId: string, fileName?: string): Promise<void> => {
+        async (file: File, patientId: string | undefined, fileUploadId: string, fileName?: string): Promise<void> => {
             try {
                 const s3FileName = fileName || file.name;
-                const key = `augmet_uploader/${patientId}_${getCurrentDateTime()}/${s3FileName}`;
+                // V2: Support uploads without patient - use fileUploadId as folder identifier
+                const folderIdentifier = patientId || fileUploadId;
+                const key = `augmet_uploader/${folderIdentifier}_${getCurrentDateTime()}/${s3FileName}`;
                 const chunkLen = getChunkCount(file.size, CHUNK_SIZE);
 
                 if (!navigator.onLine) {
@@ -240,8 +312,8 @@ export function useFileUpload(): UseFileUploadReturn {
                     return;
                 }
 
-                await createOrUpdateFileUpload({
-                    id: fileUploadId,
+                // V2: Update file upload status to IN_PROGRESS
+                await updateFileUploadV2(fileUploadId, {
                     status: "IN_PROGRESS",
                     file_progress: "0%",
                 });
@@ -251,8 +323,8 @@ export function useFileUpload(): UseFileUploadReturn {
                 if (initialResponse.data?.success && initialResponse.data?.data) {
                     const uploadId = initialResponse.data.data.UploadId;
 
-                    await createOrUpdateFileUpload({
-                        id: fileUploadId,
+                    // V2: Update with AWS upload details
+                    await updateFileUploadV2(fileUploadId, {
                         aws_upload_id: uploadId,
                         aws_key: key,
                     });
@@ -269,7 +341,6 @@ export function useFileUpload(): UseFileUploadReturn {
                             return;
                         }
 
-                        // Use ref to get current isCancelAvailable value (avoids stale closure)
                         if (!isCancelAvailableRef.current[fileUploadId]) {
                             return;
                         }
@@ -280,7 +351,6 @@ export function useFileUpload(): UseFileUploadReturn {
                         }
                     }
 
-                    // Use ref to get current isCancelAvailable value (avoids stale closure)
                     if (isCancelAvailableRef.current[fileUploadId]) {
                         await handleCompleteTags(key, uploadId, fileUploadId, s3FileName);
                     }
@@ -295,7 +365,8 @@ export function useFileUpload(): UseFileUploadReturn {
         [showNetworkError, handlePartUpload, handleCompleteTags, cancelWithError, updateKeyObj]
     );
 
-    // Handle resume upload
+    // ==================== Resume Upload Handler ====================
+
     const handleFileUploadResume = useCallback(
         async (file: File, fileUploadId: string, key: string, uploadId: string, currentPartIndex: number | string): Promise<void> => {
             const startPartIndex = typeof currentPartIndex === "string" ? parseInt(currentPartIndex) || 0 : currentPartIndex || 0;
@@ -308,8 +379,8 @@ export function useFileUpload(): UseFileUploadReturn {
                     return;
                 }
 
-                await createOrUpdateFileUpload({
-                    id: fileUploadId,
+                // V2: Update file upload status to IN_PROGRESS (force update)
+                await updateFileUploadV2(fileUploadId, {
                     status: "IN_PROGRESS",
                     updateStatus: true,
                 });
@@ -320,7 +391,6 @@ export function useFileUpload(): UseFileUploadReturn {
                         return;
                     }
 
-                    // Use ref to get current isCancelAvailable value (avoids stale closure)
                     if (!isCancelAvailableRef.current[fileUploadId]) {
                         return;
                     }
@@ -328,7 +398,6 @@ export function useFileUpload(): UseFileUploadReturn {
                     await handlePartUpload(file, partIndex, chunkLen, key, uploadId, fileUploadId);
                 }
 
-                // Use ref to get current isCancelAvailable value (avoids stale closure)
                 if (isCancelAvailableRef.current[fileUploadId]) {
                     await handleCompleteTags(key, uploadId, fileUploadId, key);
                 }
@@ -340,7 +409,8 @@ export function useFileUpload(): UseFileUploadReturn {
         [showNetworkError, handlePartUpload, handleCompleteTags, cancelWithError]
     );
 
-    // Process upload queue
+    // ==================== Queue Processing ====================
+
     const processQueue = useCallback(async (): Promise<void> => {
         try {
             while (!fileUploadQueue.current.isEmpty) {
@@ -352,7 +422,8 @@ export function useFileUpload(): UseFileUploadReturn {
                 try {
                     if (isFileResume && key && uploadId) {
                         await handleFileUploadResume(file, fileUploadId, key, uploadId, currentPartIndex || 0);
-                    } else if (patientId) {
+                    } else {
+                        // V2: Support uploads without patient
                         await handleFileUpload(file, patientId, fileUploadId, fileName);
                     }
                 } catch (error) {
@@ -367,23 +438,29 @@ export function useFileUpload(): UseFileUploadReturn {
         }
     }, [handleFileUpload, handleFileUploadResume, cancelWithError]);
 
-    // Add files to upload queue
+    // ==================== Core Upload Functions ====================
+
+    /**
+     * Add files to upload queue
+     * V2: patient_id is optional - files can be uploaded without patient assignment
+     */
     const addFilesToQueue = useCallback(
-        async (filesData: FileToUpload[]): Promise<void> => {
+        async (filesData: FileToUploadV2[]): Promise<void> => {
             const orgId = localStorage.getItem("org_id");
 
             for (const fileData of filesData) {
                 const { file, fileName, originalFileName, fileType, patientId, visitId, sampleId } = fileData;
 
                 try {
-                    const result = await createOrUpdateFileUpload({
+                    // V2: Create file upload record (patient_id is optional)
+                    const result = await createFileUploadV2({
                         file_name: fileName,
                         original_file_name: originalFileName || file.name,
                         local_file_path: (file as File & { path?: string }).path || "",
                         org_id: orgId || "",
-                        patient_id: patientId,
-                        sample_id: sampleId || "",
-                        visit_id: visitId || "",
+                        patient_id: patientId || undefined,
+                        sample_id: sampleId || undefined,
+                        visit_id: visitId || undefined,
                         file_type: fileType,
                         file_size: file.size,
                     });
@@ -414,7 +491,6 @@ export function useFileUpload(): UseFileUploadReturn {
                 }
             }
 
-            // Use ref to get current isUploadInProgress value (avoids stale closure)
             if (!isUploadInProgressRef.current && !fileUploadQueue.current.isEmpty) {
                 setIsUploadInProgress(true);
                 processQueue();
@@ -423,30 +499,28 @@ export function useFileUpload(): UseFileUploadReturn {
         [processQueue, updateIsUploading]
     );
 
-    // Resume an interrupted upload
+    /**
+     * Resume an interrupted upload
+     */
     const resumeUpload = useCallback(
         async (fileInfo: ResumeUploadInfo): Promise<void> => {
             const { fileUploadId, fileName, filePath, uploadId, key, currentPartIndex } = fileInfo;
 
             try {
-                // Use Electron's file system API to read local files
                 if (!window.electronAPI?.readLocalFile) {
                     throw new Error("File system access not available");
                 }
 
-                // First check if file exists
                 const statsResult = await window.electronAPI.getFileStats(filePath);
                 if (!statsResult.success || !statsResult.exists) {
                     throw new Error("File not found at stored location");
                 }
 
-                // Read file using Electron's file system API
                 const fileResult = await window.electronAPI.readLocalFile(filePath);
                 if (!fileResult.success || !fileResult.data) {
                     throw new Error(fileResult.error || "Failed to read file");
                 }
 
-                // Convert base64 data to Blob then File
                 const binaryString = atob(fileResult.data);
                 const bytes = new Uint8Array(binaryString.length);
                 for (let i = 0; i < binaryString.length; i++) {
@@ -463,8 +537,8 @@ export function useFileUpload(): UseFileUploadReturn {
 
                 setIsCancelAvailable((prev) => ({ ...prev, [fileUploadId]: true }));
 
-                await createOrUpdateFileUpload({
-                    id: fileUploadId,
+                // V2: Update file upload status to QUEUED
+                await updateFileUploadV2(fileUploadId, {
                     status: "QUEUED",
                     updateStatus: true,
                 });
@@ -479,7 +553,6 @@ export function useFileUpload(): UseFileUploadReturn {
                     fileName,
                 });
 
-                // Use ref to get current isUploadInProgress value (avoids stale closure)
                 if (!isUploadInProgressRef.current) {
                     setIsUploadInProgress(true);
                     processQueue();
@@ -492,7 +565,10 @@ export function useFileUpload(): UseFileUploadReturn {
         [processQueue, updateIsUploading]
     );
 
-    // Cancel an upload
+    /**
+     * Cancel an upload
+     * V2: Uses the new cancel API and removes file from queue
+     */
     const cancelUpload = useCallback(
         async (fileUploadId: string, status: string): Promise<void> => {
             setIsCancelAvailable((prev) => ({ ...prev, [fileUploadId]: false }));
@@ -503,8 +579,17 @@ export function useFileUpload(): UseFileUploadReturn {
             });
 
             try {
-                // Use ref to get current keyObj value (avoids stale closure)
-                const result = await cancelDeleteFileUpload(fileUploadId, "cancel", keyObjRef.current[fileUploadId]);
+                // Remove file from the upload queue if it's still queued
+                const removedCount = fileUploadQueue.current.removeBy(
+                    (item) => item.fileUploadId === fileUploadId
+                );
+                
+                if (removedCount > 0) {
+                    console.log(`Removed ${removedCount} item(s) from queue for fileUploadId: ${fileUploadId}`);
+                }
+
+                // V2: Use the new cancel API to mark as CANCEL status
+                const result = await cancelFileUploadV2(fileUploadId);
 
                 setKeyObj((prev) => {
                     const updated = { ...prev };
@@ -514,11 +599,28 @@ export function useFileUpload(): UseFileUploadReturn {
                 });
 
                 if (result.data?.success) {
+                    // Cancel the ongoing chunk upload if in progress
                     if (cancelTokenSource.current && status === "IN_PROGRESS") {
                         cancelTokenSource.current.cancel();
                         cancelTokenSource.current = null;
                     }
                 }
+
+                // Clean up isUploading state
+                setIsUploading((prev) => {
+                    const updated = { ...prev };
+                    delete updated[fileUploadId];
+                    updateIsUploading(updated);
+                    return updated;
+                });
+
+                // Clean up isCancelAvailable state
+                setIsCancelAvailable((prev) => {
+                    const updated = { ...prev };
+                    delete updated[fileUploadId];
+                    return updated;
+                });
+
             } catch (error) {
                 console.error("Cancel error:", error);
             }
@@ -526,14 +628,156 @@ export function useFileUpload(): UseFileUploadReturn {
         [updateIsUploading, updateKeyObj]
     );
 
-    return {
+    // ==================== Upload Progress Callbacks ====================
+
+    /**
+     * Register a callback to be called when a part is uploaded
+     * Returns an unsubscribe function
+     */
+    const onPartUploaded = useCallback((callback: () => void): (() => void) => {
+        partUploadCallbacksRef.current.add(callback);
+        return () => {
+            partUploadCallbacksRef.current.delete(callback);
+        };
+    }, []);
+
+    // ==================== V2 Status Tab Functions ====================
+
+    /**
+     * Get file uploads for Status tab with progress and actions
+     */
+    const getStatusList = useCallback(
+        async (params?: { search?: string; file_type?: string; status?: string; limit?: number; skip?: number }): Promise<StatusListResponse> => {
+            const response = await getStatusListV2(params);
+            return response.data.data;
+        },
+        []
+    );
+
+    /**
+     * Retry a failed or stalled upload
+     */
+    const retryUpload = useCallback(
+        async (fileId: string): Promise<FileUpload> => {
+            const response = await retryFileUploadV2(fileId);
+            return response.data.data;
+        },
+        []
+    );
+
+    /**
+     * Get download URLs for multiple files
+     */
+    const bulkDownload = useCallback(
+        async (fileIds: string[]): Promise<Array<{ _id: string; file_name: string; download_url?: string; error?: string }>> => {
+            const response = await bulkDownloadV2(fileIds);
+            return response.data.data;
+        },
+        []
+    );
+
+    /**
+     * Delete multiple file uploads
+     */
+    const bulkDelete = useCallback(
+        async (fileIds: string[]): Promise<{ deleted_count: number }> => {
+            const response = await bulkDeleteV2(fileIds);
+            return response.data.data;
+        },
+        []
+    );
+
+    // ==================== V2 Assign Tab Functions ====================
+
+    /**
+     * Get completed file uploads without patient assignment
+     */
+    const getAssignList = useCallback(
+        async (params?: { search?: string; file_type?: string; limit?: number; skip?: number }): Promise<AssignListResponse> => {
+            const response = await getAssignListV2(params);
+            return response.data.data;
+        },
+        []
+    );
+
+    /**
+     * Assign a patient to an uploaded file
+     */
+    const assignPatient = useCallback(
+        async (fileId: string, data: PatientAssignData): Promise<FileUpload> => {
+            const response = await assignPatientV2(fileId, data);
+            return response.data.data;
+        },
+        []
+    );
+
+    /**
+     * Assign a patient to multiple file uploads
+     */
+    const bulkAssignPatient = useCallback(
+        async (fileIds: string[], data: PatientAssignData): Promise<{ assigned_count: number; patient_id: string; visit_id: string; sample_id: string }> => {
+            const response = await bulkAssignPatientV2(fileIds, data);
+            return response.data.data;
+        },
+        []
+    );
+
+    // ==================== V2 Association Tab Functions ====================
+
+    /**
+     * Get file uploads with full association details (DataTables format)
+     */
+    const getAssociationList = useCallback(
+        async (params: Record<string, unknown>): Promise<AssociationListResponse> => {
+            return await getAssociationListV2(params);
+        },
+        []
+    );
+
+    // ==================== Context Value ====================
+
+    const value: UploadContextV2Value = {
+        // Core upload functions
         addFilesToQueue,
         resumeUpload,
         cancelUpload,
+        
+        // Status state
         isUploading,
         isCancelAvailable,
         isUploadInProgress,
+        
+        // Upload progress callbacks
+        onPartUploaded,
+        
+        // V2 Status Tab functions
+        getStatusList,
+        retryUpload,
+        bulkDownload,
+        bulkDelete,
+        
+        // V2 Assign Tab functions
+        getAssignList,
+        assignPatient,
+        bulkAssignPatient,
+        
+        // V2 Association Tab functions
+        getAssociationList,
     };
-}
 
-export default useFileUpload;
+    return <UploadContextV2.Provider value={value}>{children}</UploadContextV2.Provider>;
+};
+
+/**
+ * Hook to access V2 upload context
+ */
+export const useUploadV2 = (): UploadContextV2Value => {
+    const context = useContext(UploadContextV2);
+    if (!context) {
+        throw new Error("useUploadV2 must be used within an UploadProviderV2");
+    }
+    return context;
+};
+
+export default UploadContextV2;
+

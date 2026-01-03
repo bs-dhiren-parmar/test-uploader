@@ -1,104 +1,95 @@
-import React, { ReactNode } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './context/AuthContext';
-import { UploadProvider } from './context/UploadContext';
-import Login from './pages/Login';
-import Uploader from './pages/Uploader';
-import FileList from './pages/FileList';
-import './types/electron.d';
+import React, { ReactNode } from "react";
+import { Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import { UploadProviderV2 } from "./context/UploadContextV2";
+import Login from "./pages/Login";
+import Dashboard from "./pages/Dashboard";
+import "./types/electron.d";
 
 interface RouteWrapperProps {
-  children: ReactNode;
+    children: ReactNode;
 }
 
 // Protected route wrapper
 const ProtectedRoute: React.FC<RouteWrapperProps> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+    const { isAuthenticated, loading } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="loading-screen">
-        <div className="spinner"></div>
-        <p>Loading...</p>
-      </div>
-    );
-  }
+    if (loading) {
+        return (
+            <div className="loading-screen">
+                <div className="spinner"></div>
+                <p>Loading...</p>
+            </div>
+        );
+    }
 
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
+    if (!isAuthenticated) {
+        return <Navigate to="/login" replace />;
+    }
 
-  return <>{children}</>;
+    return children;
 };
 
 // Public route wrapper (redirects to uploader if authenticated)
 const PublicRoute: React.FC<RouteWrapperProps> = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+    const { isAuthenticated, loading } = useAuth();
 
-  if (loading) {
-    return (
-      <div className="loading-screen">
-        <div className="spinner"></div>
-        <p>Loading...</p>
-      </div>
-    );
-  }
+    if (loading) {
+        return (
+            <div className="loading-screen">
+                <div className="spinner"></div>
+                <p>Loading...</p>
+            </div>
+        );
+    }
 
-  if (isAuthenticated) {
-    return <Navigate to="/uploader" replace />;
-  }
+    if (isAuthenticated) {
+        return <Navigate to="/dashboard" replace />;
+    }
 
-  return <>{children}</>;
+    return children;
 };
 
 const AppRoutes: React.FC = () => {
-  return (
-    <Routes>
-      {/* Public routes */}
-      <Route 
-        path="/login" 
-        element={
-          <PublicRoute>
-            <Login />
-          </PublicRoute>
-        } 
-      />
+    return (
+        <Routes>
+            {/* Public routes */}
+            <Route
+                path="/login"
+                element={
+                    <PublicRoute>
+                        <Login />
+                    </PublicRoute>
+                }
+            />
 
-      {/* Protected routes */}
-      <Route 
-        path="/uploader" 
-        element={
-          <ProtectedRoute>
-            <Uploader />
-          </ProtectedRoute>
-        } 
-      />
-      <Route 
-        path="/file-list" 
-        element={
-          <ProtectedRoute>
-            <FileList />
-          </ProtectedRoute>
-        } 
-      />
+            {/* Protected routes */}
+            <Route
+                path="/dashboard"
+                element={
+                    <ProtectedRoute>
+                        <Dashboard />
+                    </ProtectedRoute>
+                }
+            />
 
-      {/* Default route - redirect to login */}
-      <Route path="/" element={<Navigate to="/login" replace />} />
+            {/* Default route - redirect to login */}
+            <Route path="/" element={<Navigate to="/login" replace />} />
 
-      {/* Catch all - redirect to login */}
-      <Route path="*" element={<Navigate to="/login" replace />} />
-    </Routes>
-  );
+            {/* Catch all - redirect to login */}
+            <Route path="*" element={<Navigate to="/login" replace />} />
+        </Routes>
+    );
 };
 
 const App: React.FC = () => {
-  return (
-    <AuthProvider>
-      <UploadProvider>
-        <AppRoutes />
-      </UploadProvider>
-    </AuthProvider>
-  );
+    return (
+        <AuthProvider>
+            <UploadProviderV2>
+                <AppRoutes />
+            </UploadProviderV2>
+        </AuthProvider>
+    );
 };
 
 export default App;

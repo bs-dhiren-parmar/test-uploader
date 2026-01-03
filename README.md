@@ -1,4 +1,4 @@
-# Augmet Desktop Uploader.
+# Augmet Desktop Uploader
 
 A desktop application for uploading medical/genomic files to the Augmet platform. Built with **Electron**, **React**, **TypeScript**, and **Vite**.
 
@@ -113,6 +113,7 @@ This project uses **Conventional Commits** for semantic versioning. The commit m
 | `docs:` | None | Documentation changes only |
 | `style:` | None | Code style changes (formatting, semicolons, etc.) |
 | `refactor:` | None | Code refactoring without feature or fix |
+| `perf:` | Patch | Performance improvements |
 | `test:` | None | Adding or updating tests |
 | `chore:` | None | Build process or auxiliary tool changes |
 
@@ -168,21 +169,6 @@ npm run dist:linux  # Linux (DEB, AppImage)
 ```
 
 Output will be in the `release/` directory.
-
-## API Endpoints
-
-The application connects to the Augmet API with the following endpoints:
-
-- `/api/users/authenticate/by-api-key` - User authentication
-- `/api/patients/patient` - Get all patients
-- `/api/patients/visits/{patient_id}` - Get patient visits and samples
-- `/api/patients/add-sample-id` - Add new sample ID
-- `/api/file-upload` - Create/update file upload record
-- `/api/file-upload/data-tables` - Get file list with pagination
-- `/api/file-upload/intiate-multipart-upload` - Initiate S3 multipart upload
-- `/api/file-upload/genrate-signed-urls` - Get signed URLs for parts
-- `/api/file-upload/complete-signed-upload` - Complete multipart upload
-- `/api/file-upload/cancel-delete/{id}` - Cancel or delete upload
 
 ## Supported File Types
 
