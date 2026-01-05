@@ -31,12 +31,9 @@ jobs:
   check-release:
     runs-on: ubuntu-latest
     needs: conventional-commits
-    if: |
-      github.event_name == 'push' && 
-      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') && 
-      (needs.conventional-commits.result == 'success' || needs.conventional-commits.result == 'skipped')
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     permissions:
-      contents: read
+      contents: write
     outputs:
       new_version: ${{ steps.semantic.outputs.new_release_version }}
       should_release: ${{ steps.semantic.outputs.new_release_published }}
@@ -45,8 +42,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -205,12 +200,7 @@ jobs:
     if: |
       github.event_name == 'push' && 
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
-      needs.check-release.result == 'success' &&
-      needs.check-release.outputs.should_release == 'true' &&
-      needs.ubuntu-build.result == 'success' &&
-      needs.windows-build.result == 'success' &&
-      needs.macos-build.result == 'success'
-    continue-on-error: false
+      needs.check-release.outputs.should_release == 'true'
     permissions:
       contents: write
       issues: write
