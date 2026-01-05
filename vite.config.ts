@@ -8,6 +8,9 @@ export default defineConfig({
         outDir: "dist",
         emptyOutDir: true,
     },
+    optimizeDeps: {
+        include: ["react-select-async-paginate"],
+    },
     server: {
         port: 3000,
     },
