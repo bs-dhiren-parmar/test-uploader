@@ -108,6 +108,7 @@
     "react-dom": "^19.2.3",
     "react-router-dom": "^7.10.1",
     "react-select": "^5.10.2",
-    "react-select-async-paginate": "^0.7.11"
+    "react-select-async-paginate": "^0.7.11",
+    "yup": "^1.7.1"
   }
 }
