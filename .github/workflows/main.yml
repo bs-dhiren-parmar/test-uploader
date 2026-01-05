@@ -31,7 +31,11 @@ jobs:
   check-release:
     runs-on: ubuntu-latest
     needs: conventional-commits
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: |
+      github.event_name == 'push' && 
+      (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
+      !contains(github.event.head_commit.message, '[skip ci]') &&
+      !contains(github.event.head_commit.message, '[ci skip]')
     permissions:
       contents: write
     outputs:
@@ -200,7 +204,8 @@ jobs:
     if: |
       github.event_name == 'push' && 
       (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master') &&
-      needs.check-release.outputs.should_release == 'true'
+      needs.check-release.outputs.should_release == 'true' &&
+      needs.check-release.result == 'success'
     permissions:
       contents: write
       issues: write
