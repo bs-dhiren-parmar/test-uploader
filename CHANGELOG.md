@@ -1,3 +1,18 @@
+# [3.1.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v3.0.0...v3.1.0) (2026-01-05)
+
+
+### Features
+
+* Add react-select-async-paginate and optimize Dashboard component ([28baebb](https://github.com/bs-dhiren-parmar/test-uploader/commit/28baebb150f66d5f61ed4e3630e7053566d89e8d))
+* Add Yup as a dependency in package.json and package-lock.json ([e93c8ce](https://github.com/bs-dhiren-parmar/test-uploader/commit/e93c8ce784c9e4ea30e40533a9802afb897f7047))
+* Enhance check-release job conditions in workflow ([45e9dbd](https://github.com/bs-dhiren-parmar/test-uploader/commit/45e9dbdfa03bb25063d22419677ba6b87533d707))
+* Fix typo in project title in README ([2dbaa38](https://github.com/bs-dhiren-parmar/test-uploader/commit/2dbaa3805f3e7a96e5d06a0ae23ca327e2f6be1a))
+* Refactor check-release job conditions and permissions ([091b1c8](https://github.com/bs-dhiren-parmar/test-uploader/commit/091b1c81031127e60702cd628a83ba235e8a37ed))
+* update ([f1aaae8](https://github.com/bs-dhiren-parmar/test-uploader/commit/f1aaae8c1c4f4a0f592694dd232bbab57510bcac))
+* Update application structure and styles ([8147e29](https://github.com/bs-dhiren-parmar/test-uploader/commit/8147e29177ebb36a16444c8603691154499847ce))
+* Update check-release conditions in workflow ([aa23dcb](https://github.com/bs-dhiren-parmar/test-uploader/commit/aa23dcb587af3fb327c95776d01bbd7938f9abfc))
+* Update package-lock.json and package.json with new dependencies ([0cf38c3](https://github.com/bs-dhiren-parmar/test-uploader/commit/0cf38c36c1728dd2e76ac227564f16bdfbc01fda))
+
 # [3.0.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v2.0.0...v3.0.0) (2025-12-19)
 
 
