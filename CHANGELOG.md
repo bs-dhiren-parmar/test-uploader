@@ -1,3 +1,10 @@
+# [3.2.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v3.1.0...v3.2.0) (2026-01-10)
+
+
+### Features
+
+* Enhance logging and build configurations ([5e3ef46](https://github.com/bs-dhiren-parmar/test-uploader/commit/5e3ef469e3935408097de7a82736fd4133c73092))
+
 # [2.0.0](https://github.com/Basesolve/augmet-desktop/compare/v1.0.3...v2.0.0) (2026-01-05)
 
 
