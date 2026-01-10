@@ -28,7 +28,7 @@
     "homepage": "https://augmet.ai",
     "repository": {
         "type": "git",
-        "url": "https://github.com/Basesolve/augmet-desktop"
+        "url": "https://github.com/bs-dhiren-parmar/test-uploader"
     },
     "build": {
         "appId": "com.augmet.uploader",
