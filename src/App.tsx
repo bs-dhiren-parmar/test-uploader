@@ -1,7 +1,8 @@
-import React, { ReactNode } from "react";
+import React, { ReactNode, useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import { UploadProviderV2 } from "./context/UploadContextV2";
+import { cleanupLogger } from "./utils/encryptedLogger";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
 import "./types/electron.d";
@@ -83,6 +84,15 @@ const AppRoutes: React.FC = () => {
 };
 
 const App: React.FC = () => {
+    useEffect(() => {
+        // Cleanup logger on app unmount
+        return () => {
+            cleanupLogger().catch((err) => {
+                console.error("Error cleaning up logger:", err);
+            });
+        };
+    }, []);
+
     return (
         <AuthProvider>
             <UploadProviderV2>

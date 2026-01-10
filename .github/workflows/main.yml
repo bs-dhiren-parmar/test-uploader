@@ -1,4 +1,4 @@
-name: Electron App Build
+name: Augmet Desktop App Build
 
 on:
   push:
@@ -96,6 +96,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Update version in package.json
+        if: needs.check-release.outputs.new_version != ''
+        run: |
+          NEW_VERSION="${{ needs.check-release.outputs.new_version }}"
+          echo "Updating package.json version to: $NEW_VERSION"
+          npm version $NEW_VERSION --no-git-tag-version --allow-same-version
+
       - name: Build Electron App for Linux
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -137,6 +144,13 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Update version in package.json
+        if: needs.check-release.outputs.new_version != ''
+        run: |
+          $NEW_VERSION = "${{ needs.check-release.outputs.new_version }}"
+          Write-Host "Updating package.json version to: $NEW_VERSION"
+          npm version $NEW_VERSION --no-git-tag-version --allow-same-version
+
       - name: Build Electron App for Windows
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -176,6 +190,13 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Update version in package.json
+        if: needs.check-release.outputs.new_version != ''
+        run: |
+          NEW_VERSION="${{ needs.check-release.outputs.new_version }}"
+          echo "Updating package.json version to: $NEW_VERSION"
+          npm version $NEW_VERSION --no-git-tag-version --allow-same-version
 
       - name: Build Electron App for macOS
         env:
@@ -235,10 +256,19 @@ jobs:
       - name: Prepare release assets
         run: |
           mkdir -p release-assets
-          cp artifacts/Electron_App_Linux/* release-assets/ 2>/dev/null || true
-          cp artifacts/Electron_App_Windows/* release-assets/ 2>/dev/null || true
-          cp artifacts/Electron_App_macOS/* release-assets/ 2>/dev/null || true
-          echo "Release assets prepared:"
+          echo "=== Checking downloaded artifacts ==="
+          ls -la artifacts/ || true
+          ls -la artifacts/Electron_App_Linux/ || true
+          ls -la artifacts/Electron_App_Windows/ || true
+          ls -la artifacts/Electron_App_macOS/ || true
+          
+          echo "=== Copying artifacts to release-assets ==="
+          # Use find to handle filenames with spaces properly
+          find artifacts/Electron_App_Linux -type f \( -name "*.deb" -o -name "*.AppImage" \) -exec cp {} release-assets/ \; 2>/dev/null || true
+          find artifacts/Electron_App_Windows -type f -name "*.exe" -exec cp {} release-assets/ \; 2>/dev/null || true
+          find artifacts/Electron_App_macOS -type f -name "*.dmg" -exec cp {} release-assets/ \; 2>/dev/null || true
+          
+          echo "=== Release assets prepared ==="
           ls -la release-assets/
 
       - name: Run semantic-release
@@ -258,9 +288,16 @@ jobs:
         run: |
           TAG="v${{ steps.semantic-release.outputs.new_release_version }}"
           echo "Uploading assets to release: $TAG"
-          for file in release-assets/*; do
+          echo "Files to upload:"
+          ls -la release-assets/
+          
+          # Use find with -print0 and while loop to handle filenames with spaces
+          find release-assets -type f -print0 | while IFS= read -r -d '' file; do
             if [ -f "$file" ]; then
               echo "Uploading: $file"
-              gh release upload "$TAG" "$file" --clobber
+              gh release upload "$TAG" "$file" --clobber || echo "Failed to upload: $file"
             fi
           done
+          
+          echo "=== Verifying uploaded assets ==="
+          gh release view "$TAG" --json assets --jq '.assets[].name'

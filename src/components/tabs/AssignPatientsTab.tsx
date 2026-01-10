@@ -3,6 +3,7 @@ import { fileTypeOptions } from '../../data/mockData';
 import AssignPatientsModal from '../modals/AssignPatientsModal';
 import Pagination from '../Pagination';
 import { getAssignListV2, bulkAssignPatientV2 } from '../../services/fileUploadService';
+import { logger } from '../../utils/encryptedLogger';
 import type { AssignListItem } from '../../types';
 
 const AssignPatientsTab: React.FC = () => {
@@ -39,7 +40,11 @@ const AssignPatientsTab: React.FC = () => {
                 setError('Failed to fetch files');
             }
         } catch (err) {
-            console.error('Error fetching assign list:', err);
+            logger.error('Error fetching assign list', err as Error, {
+                searchTerm,
+                fileTypeFilter,
+                page: currentPage,
+            });
             setError('Failed to fetch files. Please try again.');
         } finally {
             setLoading(false);
@@ -98,7 +103,11 @@ const AssignPatientsTab: React.FC = () => {
                 setError('Failed to assign patient. Please try again.');
             }
         } catch (err) {
-            console.error('Error assigning patient:', err);
+            logger.error('Error assigning patient', err as Error, {
+                fileIds: Array.from(selectedFiles),
+                patientId: assignData.patient_id,
+                sampleId: assignData.sample_id,
+            });
             setError('Failed to assign patient. Please try again.');
         } finally {
             setSubmitting(false);

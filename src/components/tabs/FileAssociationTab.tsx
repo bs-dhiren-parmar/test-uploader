@@ -4,6 +4,7 @@ import Icon from '../Icon';
 import Pagination from '../Pagination';
 import { downloadFile } from '../../utils/helpers';
 import { getAssociationListV2, bulkDownloadV2, bulkDeleteV2 } from '../../services/fileUploadService';
+import { logger } from '../../utils/encryptedLogger';
 import type { AssociationListItem } from '../../types';
 
 const FileAssociationTab: React.FC = () => {
@@ -12,6 +13,7 @@ const FileAssociationTab: React.FC = () => {
     const [selectedFiles, setSelectedFiles] = useState<Set<string>>(new Set());
     const [currentPage, setCurrentPage] = useState(1);
     const [itemsPerPage, setItemsPerPage] = useState(10);
+    const [showDeletedFiles, setShowDeletedFiles] = useState(false);
     
     // API state
     const [files, setFiles] = useState<AssociationListItem[]>([]);
@@ -39,6 +41,7 @@ const FileAssociationTab: React.FC = () => {
             const params: Record<string, unknown> = {
                 search: searchTerm ? { value: searchTerm } : undefined,
                 file_type: fileTypeFilter || undefined,
+                include_deleted: showDeletedFiles ? 'true' : undefined,
                 start: (currentPage - 1) * itemsPerPage,
                 length: itemsPerPage,
                 columns: [
@@ -68,12 +71,17 @@ const FileAssociationTab: React.FC = () => {
                 setTotalCount(response.recordsTotal);
             }
         } catch (err) {
-            console.error('Error fetching association list:', err);
+            logger.error('Error fetching association list', err as Error, {
+                searchTerm,
+                fileTypeFilter,
+                showDeletedFiles,
+                page: currentPage,
+            });
             setError('Failed to fetch files. Please try again.');
         } finally {
             setLoading(false);
         }
-    }, [searchTerm, fileTypeFilter, currentPage, itemsPerPage, sortField, sortDirection]);
+    }, [searchTerm, fileTypeFilter, showDeletedFiles, currentPage, itemsPerPage, sortField, sortDirection]);
 
     // Fetch files on component mount and when dependencies change
     useEffect(() => {
@@ -83,7 +91,7 @@ const FileAssociationTab: React.FC = () => {
     // Reset to first page when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchTerm, fileTypeFilter]);
+    }, [searchTerm, fileTypeFilter, showDeletedFiles]);
 
     const totalPages = Math.ceil(totalCount / itemsPerPage);
 
@@ -137,7 +145,10 @@ const FileAssociationTab: React.FC = () => {
                 }, 3000);
             }
         } catch (err) {
-            console.error('Error downloading files:', err);
+            logger.error('Error downloading files', err as Error, {
+                fileIds: Array.from(selectedFiles),
+                count: selectedFiles.size,
+            });
             setError('Failed to download files. Please try again.');
         } finally {
             setActionLoading(null);
@@ -159,7 +170,10 @@ const FileAssociationTab: React.FC = () => {
                 fetchFiles();
             }
         } catch (err) {
-            console.error('Error deleting files:', err);
+            logger.error('Error deleting files', err as Error, {
+                fileIds: Array.from(selectedFiles),
+                count: selectedFiles.size,
+            });
             setError('Failed to delete files. Please try again.');
         } finally {
             setActionLoading(null);
@@ -209,7 +223,10 @@ const FileAssociationTab: React.FC = () => {
                     }, 3000);
                 }
             } catch (err) {
-                console.error('Error downloading file:', err);
+                logger.error('Error downloading file', err as Error, {
+                    fileId: file._id,
+                    fileName: file.file_name,
+                });
                 setError('Failed to download file. Please try again.');
             } finally {
                 setActionLoading(null);
@@ -227,7 +244,9 @@ const FileAssociationTab: React.FC = () => {
             await bulkDeleteV2([fileId]);
             fetchFiles();
         } catch (err) {
-            console.error('Error deleting file:', err);
+            logger.error('Error deleting file', err as Error, {
+                fileId,
+            });
             setError('Failed to delete file. Please try again.');
         } finally {
             setActionLoading(null);
@@ -328,6 +347,11 @@ const FileAssociationTab: React.FC = () => {
             case 'STALLED':
             case 'COMPLETED_WITH_ERROR':
                 return 'status-failed';
+            case 'DELETED':
+                return 'status-deleted';
+            case 'QUEUED':
+            case 'CANCEL':
+                return 'status-queued';
             default:
                 return '';
         }
@@ -364,6 +388,17 @@ const FileAssociationTab: React.FC = () => {
                     </select>
                 </div>
                 <div className="controls-spacer" />
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem' }}>
+                        <input
+                            type="checkbox"
+                            checked={showDeletedFiles}
+                            onChange={(e) => setShowDeletedFiles(e.target.checked)}
+                            style={{ cursor: 'pointer' }}
+                        />
+                        <span>Show Deleted Files</span>
+                    </label>
+                </div>
                 <div className="action-buttons-group">
                     <button 
                         className="btn btn-primary" 
@@ -434,28 +469,47 @@ const FileAssociationTab: React.FC = () => {
                         Loading...
                     </div>
                 ) : (
-                    files.map(file => (
-                        <div 
-                            key={file._id} 
-                            className={`file-row file-row-association ${selectedFiles.has(file._id) ? 'row-selected' : ''} ${getStatusClass(file.upload_status)}`}
-                        >
-                            <div className="checkbox-wrapper">
-                                <input
-                                    type="checkbox"
-                                    className="file-checkbox"
-                                    data-file-id={file._id}
-                                    checked={selectedFiles.has(file._id)}
-                                    onChange={handleFileCheckboxChange}
-                                />
-                            </div>
-                            <div className="table-cell" title={file.file_name}>
-                                {truncateFileName(file.file_name)}
-                                {downloadingFiles.has(file._id) && (
-                                    <span style={{ marginLeft: '8px', fontSize: '12px', color: '#007bff' }}>
-                                        (Downloading...)
-                                    </span>
-                                )}
-                            </div>
+                    files.map(file => {
+                        const isRowProcessing = actionLoading === file._id;
+                        return (
+                            <div 
+                                key={file._id} 
+                                className={`file-row file-row-association ${selectedFiles.has(file._id) ? 'row-selected' : ''} ${getStatusClass(file.upload_status)} ${isRowProcessing ? 'row-processing' : ''}`}
+                                style={isRowProcessing ? { opacity: 0.6, pointerEvents: 'none' } : {}}
+                            >
+                                <div className="checkbox-wrapper">
+                                    <input
+                                        type="checkbox"
+                                        className="file-checkbox"
+                                        data-file-id={file._id}
+                                        checked={selectedFiles.has(file._id)}
+                                        onChange={handleFileCheckboxChange}
+                                        disabled={isRowProcessing}
+                                    />
+                                </div>
+                                <div className="table-cell" title={file.file_name}>
+                                    {truncateFileName(file.file_name)}
+                                    {isRowProcessing && (
+                                        <span style={{ marginLeft: '8px', fontSize: '12px', color: '#007bff', display: 'inline-flex', alignItems: 'center' }}>
+                                            <span style={{ 
+                                                display: 'inline-block', 
+                                                width: '12px', 
+                                                height: '12px', 
+                                                border: '2px solid #007bff', 
+                                                borderTopColor: 'transparent', 
+                                                borderRadius: '50%', 
+                                                animation: 'spin 0.8s linear infinite',
+                                                marginRight: '4px'
+                                            }}></span>
+                                            Processing...
+                                        </span>
+                                    )}
+                                    {downloadingFiles.has(file._id) && !isRowProcessing && (
+                                        <span style={{ marginLeft: '8px', fontSize: '12px', color: '#007bff' }}>
+                                            (Downloading...)
+                                        </span>
+                                    )}
+                                </div>
                             <div className="table-cell" title={file.original_file_name}>
                                 {truncateFileName(file.original_file_name)}
                             </div>
@@ -501,9 +555,15 @@ const FileAssociationTab: React.FC = () => {
                                         </button>
                                     </>
                                 )}
+                                {(file.upload_status as string) === 'DELETED' && (
+                                    <span style={{ fontSize: '0.75rem', color: '#6b7280', fontStyle: 'italic' }}>
+                                        Deleted
+                                    </span>
+                                )}
                             </div>
                         </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
 

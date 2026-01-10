@@ -3,6 +3,7 @@ import Icon from "../Icon";
 import { useUploadV2 } from "../../context/UploadContextV2";
 import { checkFileExtension, sanitizeFileName, formatFileSize } from "../../utils/helpers";
 import { FILE_TYPE_OPTIONS } from "../../utils/constants";
+import { logger } from "../../utils/encryptedLogger";
 import "../../styles/fileDropTab.css";
 
 /**
@@ -80,32 +81,55 @@ const FileDropTab: React.FC = () => {
         setProcessedFiles((prev) => [...prev, ...newProcessedFiles]);
     }, []);
 
-    // Drag handlers
+    // Drag handlers with error handling
     const handleDragOver = useCallback((e: DragEvent<HTMLDivElement>): void => {
-        e.preventDefault();
-        e.stopPropagation();
+        try {
+            e.preventDefault();
+            e.stopPropagation();
+        } catch (error) {
+            console.error("Error in handleDragOver:", error);
+        }
     }, []);
 
     const handleDragEnter = useCallback((e: DragEvent<HTMLDivElement>): void => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(true);
+        try {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragOver(true);
+        } catch (error) {
+            console.error("Error in handleDragEnter:", error);
+        }
     }, []);
 
     const handleDragLeave = useCallback((e: DragEvent<HTMLDivElement>): void => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(false);
+        try {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragOver(false);
+        } catch (error) {
+            console.error("Error in handleDragLeave:", error);
+        }
     }, []);
 
     const handleDrop = useCallback((e: DragEvent<HTMLDivElement>): void => {
-        e.preventDefault();
-        e.stopPropagation();
-        setIsDragOver(false);
+        try {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragOver(false);
 
-        const droppedFiles = Array.from(e.dataTransfer.files);
-        if (droppedFiles.length > 0) {
-            processFiles(droppedFiles);
+            // Safely access dataTransfer
+            if (e.dataTransfer && e.dataTransfer.files) {
+                const droppedFiles = Array.from(e.dataTransfer.files);
+                if (droppedFiles.length > 0) {
+                    processFiles(droppedFiles);
+                }
+            }
+        } catch (error) {
+            console.error("Error in handleDrop:", error);
+            logger.error("Error handling file drop", error as Error, {
+                hasDataTransfer: !!e.dataTransfer,
+                filesCount: e.dataTransfer?.files?.length || 0,
+            });
         }
     }, [processFiles]);
 
@@ -199,11 +223,30 @@ const FileDropTab: React.FC = () => {
                 "Files Added to Queue",
                 `${filesToUpload.length} file(s) added to upload queue.`
             );
-        } catch (error) {
+        } catch (error: any) {
             console.error("Error adding files to queue:", error);
+            
+            // Extract detailed error message
+            const errorMessage = error?.response?.data?.message 
+                || error?.response?.data?.error 
+                || error?.message 
+                || "Failed to add files to upload queue. Please try again.";
+            
+            // Log to encrypted log file
+            logger.error("Error adding files to queue", error as Error, {
+                response: error?.response?.data,
+                status: error?.response?.status,
+                filesCount: filesToUpload.length,
+                files: filesToUpload.map(f => ({
+                    fileName: f.fileName,
+                    fileType: f.fileType,
+                    fileSize: f.file.size,
+                })),
+            });
+            
             window.electronAPI?.showErrorBox(
                 "Queue Error",
-                "Failed to add files to upload queue. Please try again."
+                errorMessage
             );
         } finally {
             setIsAddingToQueue(false);

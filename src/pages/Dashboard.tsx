@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import FileDropTab from '../components/tabs/FileDropTab';
@@ -14,6 +14,23 @@ const Dashboard: React.FC = () => {
     const navigate = useNavigate();
     const { isAuthenticated, loading: authLoading } = useAuth();
     const [activeTab, setActiveTab] = useState<TabType>('file-drop');
+
+    // Memoized handlers for tab switching
+    const handleFileDropTab = useCallback(() => {
+        setActiveTab('file-drop');
+    }, []);
+
+    const handleStatusTab = useCallback(() => {
+        setActiveTab('status');
+    }, []);
+
+    const handleAssignPatientsTab = useCallback(() => {
+        setActiveTab('assign-patients');
+    }, []);
+
+    const handleFileAssociationTab = useCallback(() => {
+        setActiveTab('file-association');
+    }, []);
 
     // Redirect if not authenticated
     React.useEffect(() => {
@@ -53,25 +70,25 @@ const Dashboard: React.FC = () => {
                     <nav className="dashboard-tabs">
                         <button
                             className={`dashboard-tab ${activeTab === 'file-drop' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('file-drop')}
+                            onClick={handleFileDropTab}
                         >
                             File Drop
                         </button>
                         <button
                             className={`dashboard-tab ${activeTab === 'status' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('status')}
+                            onClick={handleStatusTab}
                         >
                             Status
                         </button>
                         <button
                             className={`dashboard-tab ${activeTab === 'assign-patients' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('assign-patients')}
+                            onClick={handleAssignPatientsTab}
                         >
                             Assign Patients
                         </button>
                         <button
                             className={`dashboard-tab ${activeTab === 'file-association' ? 'active' : ''}`}
-                            onClick={() => setActiveTab('file-association')}
+                            onClick={handleFileAssociationTab}
                         >
                             File Association
                         </button>

@@ -199,7 +199,7 @@
 }
 
 .table-header-association {
-    grid-template-columns: 40px 1fr 1fr 80px 1fr 100px 100px 120px 120px 80px;
+    grid-template-columns: 40px 1fr 1fr 140px 1fr 100px 100px 120px 120px 80px;
 }
 
 .table-header-assign {
@@ -240,8 +240,39 @@
     border-left-color: #6b7280;
 }
 
+.file-row.status-deleted {
+    border-left-color: #9ca3af;
+    opacity: 0.7;
+}
+
+.file-row.row-processing {
+    background: #f0f9ff;
+    border-left-color: #007bff;
+    position: relative;
+}
+
+.file-row.row-processing::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: #007bff;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
+}
+
 .file-row-association {
-    grid-template-columns: 40px 1fr 1fr 80px 1fr 100px 100px 120px 120px 80px;
+    grid-template-columns: 40px 1fr 1fr 140px 1fr 100px 100px 120px 120px 80px;
 }
 
 .file-row-assign {
@@ -283,6 +314,7 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     padding-right: 1rem;
+    white-space: break-spaces;
 }
 
 /* Action Icons */
@@ -357,8 +389,31 @@
 }
 
 .table-cell.status {
-    color: #22c55e;
     font-weight: 500;
+    white-space: normal;
+    word-wrap: break-word;
+    line-height: 1.4;
+}
+
+.table-cell.status.status-completed {
+    color: #22c55e;
+}
+
+.table-cell.status.status-in_progress {
+    color: #f59e0b;
+}
+
+.table-cell.status.status-failed {
+    color: #ef4444;
+}
+
+.table-cell.status.status-deleted {
+    color: #9ca3af;
+    font-style: italic;
+}
+
+.table-cell.status.status-queued {
+    color: #6b7280;
 }
 
 .table-cell.patient-mrn {

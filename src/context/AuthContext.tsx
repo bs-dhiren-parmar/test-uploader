@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, Rea
 import { AxiosError } from "axios";
 import { authenticateUser } from "../services/authService";
 import { setApiKeyCache, clearApiKeyCache } from "../services/api";
+import { logger } from "../utils/encryptedLogger";
 import type { User } from "../types";
 
 interface LoginResult {
@@ -123,7 +124,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
                 return { success: false, message: "Invalid credentials" };
             }
         } catch (error) {
-            console.error("Login error:", error);
+            logger.error("Authentication error", error as Error, {
+                email,
+                baseUrl,
+            });
             const axiosError = error as AxiosError<{ message?: string }>;
             return {
                 success: false,

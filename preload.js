@@ -12,6 +12,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
     getAppVersion: () => ipcRenderer.invoke("getAppVersion"),
 
+    // Get system information (OS, platform, arch)
+    getSystemInfo: () => ipcRenderer.invoke("getSystemInfo"),
+
     // ==================== Dialogs & Notifications ====================
 
     // Show desktop notification
@@ -56,11 +59,26 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
     // ==================== File System Access ====================
 
-    // Read file from local path (for resume upload)
+    // Read file from local path (for resume upload) - WARNING: Only for small files (<100MB)
     readLocalFile: (filePath) => ipcRenderer.invoke("readLocalFile", { filePath }),
+
+    // Read a specific chunk from a file (for large file resume uploads)
+    // This is memory-efficient and should be used for files > 100MB
+    readFileChunk: (filePath, offset, length) => ipcRenderer.invoke("readFileChunk", { filePath, offset, length }),
 
     // Get file stats
     getFileStats: (filePath) => ipcRenderer.invoke("getFileStats", { filePath }),
+
+    // ==================== Encrypted Logging ====================
+
+    // Write encrypted log entries
+    writeEncryptedLog: (entries) => ipcRenderer.invoke("writeEncryptedLog", { entries }),
+
+    // Read and decrypt log file
+    readEncryptedLog: (options) => ipcRenderer.invoke("readEncryptedLog", options),
+
+    // Get list of log files
+    getLogFiles: () => ipcRenderer.invoke("getLogFiles"),
 
     // ==================== Event Listeners ====================
 

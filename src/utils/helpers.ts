@@ -16,8 +16,8 @@ export const validateEmail = (email: string): RegExpMatchArray | null => {
  * Validate URL format
  */
 export const validateUrl = (url: string): boolean => {
-    const urlRegex = new RegExp("https?://(?:w{1,3}.)?[a-zA-Z0-9.-]+(?:.[a-z]+)*(?::d+)?(?![^<]*(?:</w+>))", "gm");
-    const ipUrlRegex = new RegExp("^((https?://)|(www.))(?:([a-zA-Z]+)|(\\d+\\.\\d+\\.\\d+\\.\\d+)):\\d{4}$", "gm");
+    const urlRegex = new RegExp("https?://(?:www\\.)?[a-zA-Z0-9.-]+(?:.[a-z]+)*(?::\\d+)?(?![^<]*(?:</\\w+>))", "gm");
+    const ipUrlRegex = new RegExp("^((https?://)|(www.))(?:([a-zA-Z]+)|(\\d+\\.\\d+\\.\\d+\\.\\d+))(?::\\d{1,5})?$", "gm");
     return urlRegex.test(url) || ipUrlRegex.test(url);
 };
 

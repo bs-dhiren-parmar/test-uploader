@@ -32,7 +32,7 @@ export interface UserData {
 
 // ==================== File Upload Types ====================
 
-export type UploadStatus = "QUEUED" | "IN_PROGRESS" | "COMPLETED" | "COMPLETED_WITH_ERROR" | "ERROR" | "CANCEL" | "RETRIED_IN_PROGRESS";
+export type UploadStatus = "QUEUED" | "IN_PROGRESS" | "COMPLETED" | "COMPLETED_WITH_ERROR" | "ERROR" | "CANCEL" | "RETRIED_IN_PROGRESS" | "DELETED" | "NEW" | "STALLED";
 
 export interface FileUpload {
     _id: string;
@@ -72,7 +72,7 @@ export interface FileToUpload {
 }
 
 export interface QueueItem {
-    file: File;
+    file?: File;  // Optional - not needed for disk-based resume uploads
     patientId?: string;
     fileUploadId: string;
     isFileResume?: boolean;
@@ -80,11 +80,15 @@ export interface QueueItem {
     uploadId?: string;
     currentPartIndex?: number;
     fileName?: string;
+    // For disk-based resume uploads (large files)
+    filePath?: string;  // Local file path for reading chunks from disk
+    fileSize?: number;  // File size in bytes
+    fileType?: string;  // MIME type
 }
 
 export interface KeyObj {
     key: string;
-    uplaodId: string;
+    uploadId: string;
 }
 
 // ==================== API Response Types ====================
@@ -129,6 +133,8 @@ export interface StatusListItem {
     file_type: string;
     aws_key?: string;
     aws_upload_id?: string;
+    local_file_path?: string;
+    currentPartIndex?: number;
     created_at: string;
     actions: string[];
     status_color: "green" | "yellow" | "red" | "gray";
@@ -242,6 +248,7 @@ export interface ResumeUploadInfo {
     uploadId: string;
     key: string;
     currentPartIndex: number;
+    fileType?: string;  // Optional MIME type for the file
 }
 
 // ==================== Patient Form Types ====================
