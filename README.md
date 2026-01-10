@@ -1,4 +1,4 @@
-# Augmet Desktop Uploader.
+# Augmet Desktop Uploader
 
 A desktop application for uploading medical/genomic files to the Augmet platform. Built with **Electron**, **React**, **TypeScript**, and **Vite**.
 
@@ -13,6 +13,7 @@ A desktop application for uploading medical/genomic files to the Augmet platform
   - File validation (fastq, bam, bai, vcf, etc.)
 - **File List Management**: View, search, download, and manage uploaded files
 - **Desktop Notifications**: Native OS notifications for upload status
+- **Encrypted Logging**: Automatic error logging with encrypted log files for troubleshooting
 - **Cross-Platform**: Works on Windows, macOS, and Linux
 
 ## Prerequisites
@@ -176,3 +177,56 @@ Output will be in the `release/` directory.
 - **BAM**: `.bam`
 - **BAI**: `.bai`, `.bam.bai`
 - **VCF**: `.vcf`, `.vcf.idx`, `.vcf.gz`
+
+## Encrypted Logging
+
+The application automatically logs errors and important events to encrypted log files stored on your local system. These logs can be used for troubleshooting and investigating issues.
+
+### Log File Locations
+
+Log files are stored in the application's user data directory under a `logs` folder:
+
+#### Windows
+```
+%APPDATA%\augmet-uploader\logs\app-YYYY-MM-DD.log.enc
+```
+Example: `C:\Users\YourUsername\AppData\Roaming\augmet-uploader\logs\app-2024-01-15.log.enc`
+
+#### macOS
+```
+~/Library/Application Support/augmet-uploader/logs/app-YYYY-MM-DD.log.enc
+```
+Example: `/Users/YourUsername/Library/Application Support/augmet-uploader/logs/app-2024-01-15.log.enc`
+
+#### Linux
+```
+~/.config/augmet-uploader/logs/app-YYYY-MM-DD.log.enc
+```
+Example: `/home/YourUsername/.config/augmet-uploader/logs/app-2024-01-15.log.enc`
+
+### Log File Details
+
+- **File Format**: Encrypted JSON entries (AES-256-GCM encryption)
+- **File Naming**: `app-YYYY-MM-DD.log.enc` (one file per day)
+- **Rotation**: 
+  - Daily rotation (new file each day)
+  - Auto-archives when file size exceeds 10MB
+  - Automatic cleanup of logs older than 30 days
+- **Contents**: 
+  - Timestamp, log level (error/warn/info/debug)
+  - Source location (file name, line number, column number)
+  - System information (OS type, version, platform, architecture)
+  - Error messages with stack traces
+  - Contextual information (user ID, organization ID, file details)
+  - API request/response details for debugging
+
+#### Log Entry Information
+
+Each log entry includes:
+- **Timestamp** and **log level** (error/warn/info/debug)
+- **Source location**: File name, line number, and column number
+- **System information**: OS type, version, platform, and architecture
+- **User context**: User ID, organization ID, email
+- **Error details**: Stack traces, API responses, and contextual data
+
+**Note**: Log files contain sensitive information including user IDs, organization IDs, and error details. Keep them secure and only share with authorized support personnel.

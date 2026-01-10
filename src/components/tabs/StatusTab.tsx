@@ -4,12 +4,14 @@ import Icon from '../Icon';
 import Pagination from '../Pagination';
 import { useUploadV2 } from '../../context/UploadContextV2';
 import { downloadFile } from '../../utils/helpers';
+import { logger } from '../../utils/encryptedLogger';
 import { 
     getStatusListV2, 
     retryFileUploadV2, 
     bulkDownloadV2, 
     bulkDeleteV2,
     cancelFileUploadV2,
+    updateFileUploadV2,
 } from '../../services/fileUploadService';
 import type { StatusListItem } from '../../types';
 
@@ -29,8 +31,8 @@ const StatusTab: React.FC = () => {
     const [actionLoading, setActionLoading] = useState<string | null>(null);
     const [downloadingFiles, setDownloadingFiles] = useState<Set<string>>(new Set());
 
-    // Upload context to listen for part upload events
-    const { onPartUploaded } = useUploadV2();
+    // Upload context to listen for part upload events and access resume functionality
+    const { onPartUploaded, resumeUpload, addFilesToQueue, cancelUpload } = useUploadV2();
 
     // Fetch files from API
     const fetchFiles = useCallback(async () => {
@@ -52,7 +54,12 @@ const StatusTab: React.FC = () => {
                 setError('Failed to fetch files');
             }
         } catch (err) {
-            console.error('Error fetching status list:', err);
+            logger.error('Error fetching status list', err as Error, {
+                searchTerm,
+                fileTypeFilter,
+                statusFilter,
+                page: currentPage,
+            });
             setError('Failed to fetch files. Please try again.');
         } finally {
             setLoading(false);
@@ -132,7 +139,10 @@ const StatusTab: React.FC = () => {
                 }, 3000);
             }
         } catch (err) {
-            console.error('Error downloading files:', err);
+            logger.error('Error downloading files', err as Error, {
+                fileIds: Array.from(selectedFiles),
+                count: selectedFiles.size,
+            });
             setError('Failed to download files. Please try again.');
         } finally {
             setActionLoading(null);
@@ -154,27 +164,336 @@ const StatusTab: React.FC = () => {
                 fetchFiles(); // Refresh the list
             }
         } catch (err) {
-            console.error('Error deleting files:', err);
+            logger.error('Error deleting files', err as Error, {
+                fileIds: Array.from(selectedFiles),
+                count: selectedFiles.size,
+            });
             setError('Failed to delete files. Please try again.');
         } finally {
             setActionLoading(null);
         }
     }, [selectedFiles, fetchFiles]);
 
+    // Check if resume is possible for a file
+    const canResume = useCallback((file: StatusListItem): boolean => {
+        console.log('file', file);
+        return !!(
+            file.local_file_path &&
+            file.aws_upload_id &&
+            file.aws_key &&
+            file.currentPartIndex !== undefined &&
+            file.currentPartIndex > 0
+        );
+    }, []);
+
+    // Helper function to add file back to queue after retry (for full restart)
+    const addFileToQueueAfterRetry = useCallback(async (file: StatusListItem): Promise<void> => {
+        if (!file.local_file_path) {
+            logger.warn('Cannot add file to queue: local_file_path not available', {
+                fileId: file._id,
+                fileName: file.file_name,
+            });
+            return;
+        }
+
+        try {
+            // Check if file exists
+            if (!window.electronAPI?.getFileStats) {
+                logger.warn('File system access not available', {
+                    fileId: file._id,
+                });
+                return;
+            }
+
+            const statsResult = await window.electronAPI.getFileStats(file.local_file_path);
+            if (!statsResult.success || !statsResult.exists) {
+                logger.warn('File not found at stored location', {
+                    fileId: file._id,
+                    filePath: file.local_file_path,
+                });
+                window.electronAPI?.showErrorBox(
+                    'File Not Found',
+                    `File is not present at: ${file.local_file_path}`
+                );
+                return;
+            }
+
+            // Note: We'll handle large files by using optimized chunked conversion
+            // No size limit - we'll process files of any size using memory-efficient methods
+
+            // For full restart, we need to initiate a NEW multipart upload
+            // The old uploadId might be invalid if the upload was aborted
+            // Use resumeUpload which will handle reading the file and initiating a new upload if needed
+            // Note: resumeUpload will read the file itself, so we don't need to read it here
+            // This avoids reading the file twice and prevents memory issues with large files
+            
+            if (file.aws_upload_id && file.aws_key) {
+                try {
+                    // Try to resume with existing uploadId - resumeUpload will handle file reading
+                    // If uploadId is invalid, resumeUpload will initiate a new multipart upload
+                    await resumeUpload({
+                        fileUploadId: file._id,
+                        fileName: file.file_name,
+                        filePath: file.local_file_path,
+                        uploadId: file.aws_upload_id,
+                        key: file.aws_key,
+                        currentPartIndex: 0, // Start from beginning
+                    });
+                } catch (resumeError) {
+                    // If resume fails, log the error and re-throw so caller can handle it
+                    logger.error('Resume failed in addFileToQueueAfterRetry', resumeError as Error, {
+                        fileId: file._id,
+                        fileName: file.file_name,
+                        filePath: file.local_file_path,
+                        uploadId: file.aws_upload_id,
+                    });
+                    // Re-throw so the caller can show appropriate error message
+                    throw resumeError;
+                }
+            } else {
+                // No aws_upload_id - cannot resume, need new upload
+                logger.warn('No aws_upload_id found, cannot add to queue. File needs to be re-uploaded', {
+                    fileId: file._id,
+                    fileName: file.file_name,
+                });
+                window.electronAPI?.showErrorBox(
+                    'Cannot Resume',
+                    'Cannot resume upload: multipart upload information is missing. Please re-upload the file.'
+                );
+                throw new Error('Cannot resume upload: multipart upload information is missing.');
+            }
+        } catch (error) {
+            logger.error('Error adding file to queue after retry', error as Error, {
+                fileId: file._id,
+                fileName: file.file_name,
+            });
+            // Update status to ERROR in database before re-throwing
+            try {
+                await updateFileUploadV2(file._id, {
+                    status: 'ERROR',
+                });
+            } catch (updateError) {
+                logger.error('Failed to update status to ERROR in addFileToQueueAfterRetry', updateError as Error, {
+                    fileId: file._id,
+                });
+            }
+            // Re-throw to let the caller handle it
+            throw error;
+        }
+    }, [resumeUpload]);
+
     const handleRetry = useCallback(async (fileId: string) => {
         setActionLoading(fileId);
         try {
-            const response = await retryFileUploadV2(fileId);
-            if (response.data?.success) {
-                fetchFiles(); // Refresh the list
+            const file = files.find(f => f._id === fileId);
+            if (!file) {
+                setError('File not found.');
+                setActionLoading(null);
+                return;
+            }
+
+            // For cancelled files, always call retry API first to reset status
+            // Then resume or restart based on whether resume is possible
+            const isCancelled = file.upload_status === 'CANCEL';
+            
+            if (isCancelled) {
+                // Call retry API first to reset status
+                const response = await retryFileUploadV2(fileId);
+                if (!response.data?.success) {
+                    setError('Failed to retry upload. Please try again.');
+                    return;
+                }
+                
+                // Refresh the list to get updated file data
+                await fetchFiles();
+                
+                // Get the updated file data after refresh
+                const updatedFilesResponse = await getStatusListV2({
+                    search: searchTerm || undefined,
+                    file_type: fileTypeFilter || undefined,
+                    status: statusFilter || undefined,
+                    limit: itemsPerPage,
+                    skip: (currentPage - 1) * itemsPerPage
+                });
+                
+                const updatedFile = updatedFilesResponse.data?.data?.data?.find(f => f._id === fileId) || file;
+                
+                // Check if resume is possible after retry
+                if (canResume(updatedFile)) {
+                    // Use resume functionality
+                    try {
+                        await resumeUpload({
+                            fileUploadId: updatedFile._id,
+                            fileName: updatedFile.file_name,
+                            filePath: updatedFile.local_file_path!,
+                            uploadId: updatedFile.aws_upload_id!,
+                            key: updatedFile.aws_key!,
+                            currentPartIndex: updatedFile.currentPartIndex || 0,
+                        });
+                        window.electronAPI?.showNotification(
+                            'Upload Resumed',
+                            `Resuming upload for ${updatedFile.file_name} from part ${updatedFile.currentPartIndex}`
+                        );
+                    } catch (resumeError) {
+                        logger.error('Error resuming upload after retry', resumeError as Error, {
+                            fileId: updatedFile._id,
+                            fileName: updatedFile.file_name,
+                        });
+                        // Update status to ERROR in database
+                        try {
+                            await updateFileUploadV2(updatedFile._id, {
+                                status: 'ERROR',
+                            });
+                        } catch (updateError) {
+                            logger.error('Failed to update status to ERROR', updateError as Error, {
+                                fileId: updatedFile._id,
+                            });
+                        }
+                        setError('Failed to resume upload. File may not be available locally.');
+                    }
+                } else {
+                    // Full restart - add to queue
+                    if (updatedFile.local_file_path && updatedFile.aws_upload_id && updatedFile.aws_key) {
+                        try {
+                            await addFileToQueueAfterRetry(updatedFile);
+                            window.electronAPI?.showNotification(
+                                'Upload Retried',
+                                `Retrying upload for ${updatedFile.file_name}`
+                            );
+                        } catch (queueError) {
+                            logger.error('Error adding file to queue after retry', queueError as Error, {
+                                fileId: updatedFile._id,
+                                fileName: updatedFile.file_name,
+                            });
+                            // Update status to ERROR in database
+                            try {
+                                await updateFileUploadV2(updatedFile._id, {
+                                    status: 'ERROR',
+                                });
+                            } catch (updateError) {
+                                logger.error('Failed to update status to ERROR', updateError as Error, {
+                                    fileId: updatedFile._id,
+                                });
+                            }
+                            setError('Failed to add file to queue. The multipart upload may have been aborted. Please try again.');
+                        }
+                    } else {
+                        window.electronAPI?.showNotification(
+                            'Upload Retried',
+                            `Retrying upload for ${updatedFile.file_name}`
+                        );
+                    }
+                }
+            } else {
+                // For non-cancelled files (ERROR, STALLED), check if resume is possible
+                if (canResume(file)) {
+                    // Use resume functionality directly
+                    try {
+                        await resumeUpload({
+                            fileUploadId: file._id,
+                            fileName: file.file_name,
+                            filePath: file.local_file_path!,
+                            uploadId: file.aws_upload_id!,
+                            key: file.aws_key!,
+                            currentPartIndex: file.currentPartIndex || 0,
+                        });
+                        fetchFiles(); // Refresh the list
+                        window.electronAPI?.showNotification(
+                            'Upload Resumed',
+                            `Resuming upload for ${file.file_name} from part ${file.currentPartIndex}`
+                        );
+                    } catch (resumeError) {
+                        console.error('Error resuming upload:', resumeError);
+                        // Update status to ERROR in database
+                        try {
+                            await updateFileUploadV2(file._id, {
+                                status: 'ERROR',
+                            });
+                        } catch (updateError) {
+                            logger.error('Failed to update status to ERROR', updateError as Error, {
+                                fileId: file._id,
+                            });
+                        }
+                        setError('Failed to resume upload. File may not be available locally.');
+                    }
+                } else {
+                    // Use retry API (full restart) and add to queue
+                    const response = await retryFileUploadV2(fileId);
+                    if (response.data?.success) {
+                        // Refresh the list to get updated file data
+                        await fetchFiles();
+                        
+                        // Try to add file back to queue if we have the required data
+                        if (file.local_file_path && file.aws_upload_id && file.aws_key) {
+                            try {
+                                await addFileToQueueAfterRetry(file);
+                                window.electronAPI?.showNotification(
+                                    'Upload Retried',
+                                    `Retrying upload for ${file.file_name}`
+                                );
+                            } catch (queueError) {
+                                console.error('Error adding file to queue:', queueError);
+                                // Update status to ERROR in database
+                                try {
+                                    await updateFileUploadV2(file._id, {
+                                        status: 'ERROR',
+                                    });
+                                } catch (updateError) {
+                                    logger.error('Failed to update status to ERROR', updateError as Error, {
+                                        fileId: file._id,
+                                    });
+                                }
+                                setError('Failed to add file to queue. The multipart upload may have been aborted. Please try again.');
+                            }
+                        } else {
+                            window.electronAPI?.showNotification(
+                                'Upload Retried',
+                                `Retrying upload for ${file.file_name}`
+                            );
+                        }
+                    } else {
+                        setError('Failed to retry upload. Please try again.');
+                    }
+                }
             }
         } catch (err) {
-            console.error('Error retrying upload:', err);
-            setError('Failed to retry upload. Please try again.');
+            const file = files.find(f => f._id === fileId);
+            logger.error('Error retrying upload', err as Error, {
+                fileId: fileId,
+                fileName: file?.file_name || 'unknown',
+                errorMessage: err instanceof Error ? err.message : String(err),
+                errorStack: err instanceof Error ? err.stack : undefined,
+            });
+            
+            // Update status to ERROR in database
+            if (file) {
+                try {
+                    await updateFileUploadV2(fileId, {
+                        status: 'ERROR',
+                    });
+                } catch (updateError) {
+                    logger.error('Failed to update status to ERROR', updateError as Error, {
+                        fileId: fileId,
+                    });
+                }
+            }
+            
+            // Show user-friendly error message
+            const errorMessage = err instanceof Error 
+                ? err.message 
+                : 'Failed to retry upload. Please try again.';
+            
+            setError(errorMessage);
+            
+            // Show error notification
+            window.electronAPI?.showErrorBox(
+                'Retry Failed',
+                errorMessage
+            );
         } finally {
             setActionLoading(null);
         }
-    }, [fetchFiles]);
+    }, [files, fetchFiles, canResume, resumeUpload, addFileToQueueAfterRetry, searchTerm, fileTypeFilter, statusFilter, currentPage, itemsPerPage]);
 
     const handleCancel = useCallback(async (fileId: string) => {
         if (!confirm('Are you sure you want to cancel this upload?')) {
@@ -183,19 +502,37 @@ const StatusTab: React.FC = () => {
         
         setActionLoading(fileId);
         try {
-            const response = await cancelFileUploadV2(fileId);
-            if (response.data?.success) {
-                fetchFiles(); // Refresh the list
-            } else {
-                setError('Failed to cancel upload. Please try again.');
+            const file = files.find(f => f._id === fileId);
+            if (!file) {
+                setError('File not found.');
+                return;
             }
+
+            // Use context's cancelUpload which:
+            // 1. Sets cancel flag to stop further parts (after current part finishes and saves tag)
+            // 2. Cancels ongoing chunk upload token
+            // 3. Removes file from queue to prevent further parts
+            // 4. Updates DB status to CANCEL via API
+            await cancelUpload(fileId, file.upload_status);
+            
+            // Refresh the list to show updated status
+            fetchFiles();
+            
+            window.electronAPI?.showNotification(
+                'Upload Cancelled',
+                `Upload cancelled for ${file.file_name}. Current part will finish and save its tag.`
+            );
         } catch (err) {
-            console.error('Error cancelling upload:', err);
+            const file = files.find(f => f._id === fileId);
+            logger.error('Error cancelling upload', err as Error, {
+                fileId: fileId,
+                fileName: file?.file_name || 'unknown',
+            });
             setError('Failed to cancel upload. Please try again.');
         } finally {
             setActionLoading(null);
         }
-    }, [fetchFiles]);
+    }, [fetchFiles, files, cancelUpload]);
 
     const handleRestart = useCallback(async (fileId: string) => {
         if (!confirm('Are you sure you want to restart this upload?')) {
@@ -204,19 +541,189 @@ const StatusTab: React.FC = () => {
         
         setActionLoading(fileId);
         try {
-            const response = await retryFileUploadV2(fileId);
-            if (response.data?.success) {
-                fetchFiles(); // Refresh the list
+            const file = files.find(f => f._id === fileId);
+            if (!file) {
+                setError('File not found.');
+                return;
+            }
+
+            // For cancelled files, always call retry API first to reset status
+            const isCancelled = file.upload_status === 'CANCEL';
+            
+            if (isCancelled) {
+                // Call retry API first to reset status
+                const response = await retryFileUploadV2(fileId);
+                if (!response.data?.success) {
+                    setError('Failed to restart upload. Please try again.');
+                    return;
+                }
+                
+                // Refresh the list to get updated file data
+                await fetchFiles();
+                
+                // Get the updated file data after refresh
+                const updatedFilesResponse = await getStatusListV2({
+                    search: searchTerm || undefined,
+                    file_type: fileTypeFilter || undefined,
+                    status: statusFilter || undefined,
+                    limit: itemsPerPage,
+                    skip: (currentPage - 1) * itemsPerPage
+                });
+                
+                const updatedFile = updatedFilesResponse.data?.data?.data?.find(f => f._id === fileId) || file;
+                
+                // Check if resume is possible after retry
+                console.log('updatedFile', updatedFile, canResume(updatedFile));
+                if (canResume(updatedFile)) {
+                    // Use resume functionality
+                    try {
+                        await resumeUpload({
+                            fileUploadId: updatedFile._id,
+                            fileName: updatedFile.file_name,
+                            filePath: updatedFile.local_file_path!,
+                            uploadId: updatedFile.aws_upload_id!,
+                            key: updatedFile.aws_key!,
+                            currentPartIndex: updatedFile.currentPartIndex || 0,
+                        });
+                        window.electronAPI?.showNotification(
+                            'Upload Resumed',
+                            `Resuming upload for ${updatedFile.file_name} from part ${updatedFile.currentPartIndex}`
+                        );
+                    } catch (resumeError) {
+                        logger.error('Error resuming upload after restart', resumeError as Error, {
+                            fileId: updatedFile._id,
+                            fileName: updatedFile.file_name,
+                        });
+                        // Update status to ERROR in database
+                        try {
+                            await updateFileUploadV2(updatedFile._id, {
+                                status: 'ERROR',
+                            });
+                        } catch (updateError) {
+                            logger.error('Failed to update status to ERROR', updateError as Error, {
+                                fileId: updatedFile._id,
+                            });
+                        }
+                        setError('Failed to resume upload. File may not be available locally.');
+                    }
+                } else {
+                    // Full restart - add to queue
+                    if (updatedFile.local_file_path && updatedFile.aws_upload_id && updatedFile.aws_key) {
+                        try {
+                            await addFileToQueueAfterRetry(updatedFile);
+                            window.electronAPI?.showNotification(
+                                'Upload Restarted',
+                                `Restarting upload for ${updatedFile.file_name}`
+                            );
+                        } catch (queueError) {
+                            logger.error('Error adding file to queue after restart', queueError as Error, {
+                                fileId: updatedFile._id,
+                                fileName: updatedFile.file_name,
+                            });
+                            // Update status to ERROR in database
+                            try {
+                                await updateFileUploadV2(updatedFile._id, {
+                                    status: 'ERROR',
+                                });
+                            } catch (updateError) {
+                                logger.error('Failed to update status to ERROR', updateError as Error, {
+                                    fileId: updatedFile._id,
+                                });
+                            }
+                            setError('Failed to add file to queue. The multipart upload may have been aborted. Please try again.');
+                        }
+                    } else {
+                        window.electronAPI?.showNotification(
+                            'Upload Restarted',
+                            `Restarting upload for ${updatedFile.file_name}`
+                        );
+                    }
+                }
             } else {
-                setError('Failed to restart upload. Please try again.');
+                // For non-cancelled files, check if resume is possible
+                if (canResume(file)) {
+                    // Use resume functionality directly
+                    try {
+                        await resumeUpload({
+                            fileUploadId: file._id,
+                            fileName: file.file_name,
+                            filePath: file.local_file_path!,
+                            uploadId: file.aws_upload_id!,
+                            key: file.aws_key!,
+                            currentPartIndex: file.currentPartIndex || 0,
+                        });
+                        fetchFiles(); // Refresh the list
+                        window.electronAPI?.showNotification(
+                            'Upload Resumed',
+                            `Resuming upload for ${file.file_name} from part ${file.currentPartIndex}`
+                        );
+                    } catch (resumeError) {
+                        console.error('Error resuming upload:', resumeError);
+                        setError('Failed to resume upload. File may not be available locally.');
+                    }
+                } else {
+                    // Use retry API (full restart) and add to queue
+                    const response = await retryFileUploadV2(fileId);
+                    if (response.data?.success) {
+                        // Refresh the list to get updated file data
+                        await fetchFiles();
+                        
+                        // Try to add file back to queue if we have the required data
+                        if (file.local_file_path && file.aws_upload_id && file.aws_key) {
+                            try {
+                                await addFileToQueueAfterRetry(file);
+                                window.electronAPI?.showNotification(
+                                    'Upload Restarted',
+                                    `Restarting upload for ${file.file_name}`
+                                );
+                            } catch (queueError) {
+                                console.error('Error adding file to queue:', queueError);
+                                // Update status to ERROR in database
+                                try {
+                                    await updateFileUploadV2(file._id, {
+                                        status: 'ERROR',
+                                    });
+                                } catch (updateError) {
+                                    logger.error('Failed to update status to ERROR', updateError as Error, {
+                                        fileId: file._id,
+                                    });
+                                }
+                                setError('Failed to add file to queue. The multipart upload may have been aborted. Please try again.');
+                            }
+                        } else {
+                            window.electronAPI?.showNotification(
+                                'Upload Restarted',
+                                `Restarting upload for ${file.file_name}`
+                            );
+                        }
+                    } else {
+                        setError('Failed to restart upload. Please try again.');
+                    }
+                }
             }
         } catch (err) {
-            console.error('Error restarting upload:', err);
+            const file = files.find(f => f._id === fileId);
+            logger.error('Error restarting upload', err as Error, {
+                fileId: fileId,
+                fileName: file?.file_name || 'unknown',
+            });
+            // Update status to ERROR in database
+            if (file) {
+                try {
+                    await updateFileUploadV2(fileId, {
+                        status: 'ERROR',
+                    });
+                } catch (updateError) {
+                    logger.error('Failed to update status to ERROR', updateError as Error, {
+                        fileId: fileId,
+                    });
+                }
+            }
             setError('Failed to restart upload. Please try again.');
         } finally {
             setActionLoading(null);
         }
-    }, [fetchFiles]);
+    }, [files, fetchFiles, canResume, resumeUpload, addFileToQueueAfterRetry]);
 
     const handleSingleDownload = useCallback(async (file: StatusListItem) => {
         if (file.download_url) {
@@ -261,7 +768,10 @@ const StatusTab: React.FC = () => {
                     }, 3000);
                 }
             } catch (err) {
-                console.error('Error downloading file:', err);
+                logger.error('Error downloading file', err as Error, {
+                    fileId: file._id,
+                    fileName: file.file_name,
+                });
                 setError('Failed to download file. Please try again.');
             } finally {
                 setActionLoading(null);
@@ -279,7 +789,9 @@ const StatusTab: React.FC = () => {
             await bulkDeleteV2([fileId]);
             fetchFiles(); // Refresh the list
         } catch (err) {
-            console.error('Error deleting file:', err);
+            logger.error('Error deleting file', err as Error, {
+                fileId,
+            });
             setError('Failed to delete file. Please try again.');
         } finally {
             setActionLoading(null);
@@ -420,11 +932,12 @@ const StatusTab: React.FC = () => {
         }
 
         if (file.actions.includes('retry') && file.actions.includes('cancel')) {
+            const canResumeFile = canResume(file);
             return (
                 <>
                     <button 
                         className="action-icon retry" 
-                        title="Retry" 
+                        title={canResumeFile ? "Resume Upload" : "Retry Upload"} 
                         data-file-id={file._id}
                         onClick={handleRetryClick}
                         disabled={isLoading}
@@ -444,13 +957,14 @@ const StatusTab: React.FC = () => {
             );
         }
 
-        // Handle restart and delete actions for canceled files
+        // Handle restart/resume and delete actions for canceled files
         if (file.actions.includes('restart') && file.actions.includes('delete')) {
+            const canResumeFile = canResume(file);
             return (
                 <>
                     <button 
                         className="action-icon restart" 
-                        title="Restart Upload" 
+                        title={canResumeFile ? "Resume Upload" : "Restart Upload"} 
                         data-file-id={file._id}
                         onClick={handleRestartClick}
                         disabled={isLoading}
@@ -471,10 +985,11 @@ const StatusTab: React.FC = () => {
         }
 
         if (file.actions.includes('restart')) {
+            const canResumeFile = canResume(file);
             return (
                 <button 
                     className="action-icon restart" 
-                    title="Restart Upload" 
+                    title={canResumeFile ? "Resume Upload" : "Restart Upload"} 
                     data-file-id={file._id}
                     onClick={handleRestartClick}
                     disabled={isLoading}
@@ -596,35 +1111,58 @@ const StatusTab: React.FC = () => {
                         Loading...
                     </div>
                 ) : (
-                    files.map(file => (
-                        <div key={file._id} className={`file-row ${getStatusClass(file.upload_status)}`}>
-                            <div className="checkbox-wrapper">
-                                <input
-                                    type="checkbox"
-                                    className="file-checkbox"
-                                    data-file-id={file._id}
-                                    checked={selectedFiles.has(file._id)}
-                                    onChange={handleFileCheckboxChange}
-                                />
+                    files.map(file => {
+                        const isRowProcessing = actionLoading === file._id;
+                        return (
+                            <div 
+                                key={file._id} 
+                                className={`file-row ${getStatusClass(file.upload_status)} ${isRowProcessing ? 'row-processing' : ''}`}
+                                style={isRowProcessing ? { opacity: 0.6, pointerEvents: 'none' } : {}}
+                            >
+                                <div className="checkbox-wrapper">
+                                    <input
+                                        type="checkbox"
+                                        className="file-checkbox"
+                                        data-file-id={file._id}
+                                        checked={selectedFiles.has(file._id)}
+                                        onChange={handleFileCheckboxChange}
+                                        disabled={isRowProcessing}
+                                    />
+                                </div>
+                                <div className="file-name-cell" title={file.original_file_name || file.file_name}>
+                                    {file.file_name}
+                                    {isRowProcessing && (
+                                        <span style={{ marginLeft: '8px', fontSize: '12px', color: '#007bff', display: 'inline-flex', alignItems: 'center' }}>
+                                            <span style={{ 
+                                                display: 'inline-block', 
+                                                width: '12px', 
+                                                height: '12px', 
+                                                border: '2px solid #007bff', 
+                                                borderTopColor: 'transparent', 
+                                                borderRadius: '50%', 
+                                                animation: 'spin 0.8s linear infinite',
+                                                marginRight: '4px'
+                                            }}></span>
+                                            Processing...
+                                        </span>
+                                    )}
+                                    {downloadingFiles.has(file._id) && !isRowProcessing && (
+                                        <span style={{ marginLeft: '8px', fontSize: '12px', color: '#007bff' }}>
+                                            (Downloading...)
+                                        </span>
+                                    )}
+                                </div>
+                                <div className="action-icons">
+                                    {renderActionIcons(file)}
+                                </div>
+                                <div className="size-cell">
+                                    {file.upload_status === 'IN_PROGRESS' || file.upload_status === 'RETRIED_IN_PROGRESS' 
+                                        ? file.file_progress 
+                                        : (file.file_size_display || file.file_size)}
+                                </div>
                             </div>
-                            <div className="file-name-cell" title={file.original_file_name || file.file_name}>
-                                {file.file_name}
-                                {downloadingFiles.has(file._id) && (
-                                    <span style={{ marginLeft: '8px', fontSize: '12px', color: '#007bff' }}>
-                                        (Downloading...)
-                                    </span>
-                                )}
-                            </div>
-                            <div className="action-icons">
-                                {renderActionIcons(file)}
-                            </div>
-                            <div className="size-cell">
-                                {file.upload_status === 'IN_PROGRESS' || file.upload_status === 'RETRIED_IN_PROGRESS' 
-                                    ? file.file_progress 
-                                    : (file.file_size_display || file.file_size)}
-                            </div>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
 

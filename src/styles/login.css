@@ -110,10 +110,11 @@
     gap: 0.375rem;
 }
 
-.form-label .required {
+/* Only apply auto-asterisk in login forms, not globally */
+.login-form-section .form-label .required {
     color: #000;
 }
-.form-label .required::after {
+.login-form-section .form-label .required::after {
     content: " *";
     color: #ef4444;
     font-weight: 600;

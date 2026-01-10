@@ -4,6 +4,13 @@ interface FileReadResult {
     error?: string;
 }
 
+interface FileChunkReadResult {
+    success: boolean;
+    data?: string;  // Base64 encoded chunk data
+    bytesRead?: number;  // Actual bytes read (may be less than requested for last chunk)
+    error?: string;
+}
+
 interface FileStatsResult {
     success: boolean;
     size?: number;
@@ -36,7 +43,20 @@ interface ElectronAPI {
 
     // File System Access
     readLocalFile: (filePath: string) => Promise<FileReadResult>;
+    /**
+     * Read a specific chunk from a file (memory-efficient for large files)
+     * @param filePath - Path to the file
+     * @param offset - Byte offset to start reading from
+     * @param length - Number of bytes to read
+     * @returns Base64 encoded chunk data
+     */
+    readFileChunk: (filePath: string, offset: number, length: number) => Promise<FileChunkReadResult>;
     getFileStats: (filePath: string) => Promise<FileStatsResult>;
+
+    // Encrypted Logging
+    writeEncryptedLog: (entries: Array<Record<string, unknown>>) => Promise<{ success: boolean; error?: string }>;
+    readEncryptedLog: (options: { date?: string }) => Promise<{ success: boolean; entries?: Array<Record<string, unknown>>; error?: string }>;
+    getLogFiles: () => Promise<{ success: boolean; files?: Array<{ name: string; size: number; modified: string }>; error?: string }>;
 
     // Event Listeners
     onClearUploadQueue: (callback: () => void) => () => void;

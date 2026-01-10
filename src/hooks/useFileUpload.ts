@@ -3,6 +3,7 @@ import axios, { CancelTokenSource, AxiosError } from "axios";
 import Queue from "../utils/Queue";
 import { CHUNK_SIZE } from "../utils/constants";
 import { getCurrentDateTime, getCurrentChunk, getChunkCount } from "../utils/helpers";
+import { logger } from "../utils/encryptedLogger";
 import {
     createOrUpdateFileUpload,
     initiateMultipartUpload,
@@ -111,7 +112,10 @@ export function useFileUpload(): UseFileUploadReturn {
                 });
             } catch (error) {
                 const axiosError = error as AxiosError;
-                console.error("Error cancelling upload:", axiosError.message);
+                logger.error("Error cancelling upload", axiosError, {
+                    fileUploadId,
+                    status,
+                });
             }
         },
         [updateIsUploading, updateKeyObj]
@@ -196,8 +200,13 @@ export function useFileUpload(): UseFileUploadReturn {
 
                 window.electronAPI?.showNotification("File Upload", `${fileName} is uploaded.`);
             } catch (error) {
-                console.error("Error completing upload:", error);
                 const axiosError = error as AxiosError;
+                logger.error("Error completing file upload", error as Error, {
+                    fileUploadId,
+                    fileName,
+                    key,
+                    uploadId,
+                });
 
                 await createOrUpdateFileUpload({
                     id: fileUploadId,
@@ -258,7 +267,7 @@ export function useFileUpload(): UseFileUploadReturn {
                     });
 
                     setKeyObj((prev) => {
-                        const updated = { ...prev, [fileUploadId]: { key, uplaodId: uploadId } };
+                        const updated = { ...prev, [fileUploadId]: { key, uploadId: uploadId } };
                         updateKeyObj(updated);
                         return updated;
                     });
@@ -288,7 +297,11 @@ export function useFileUpload(): UseFileUploadReturn {
                     throw new Error("Error while initiating file upload");
                 }
             } catch (error) {
-                console.error("Upload error:", error);
+                logger.error("File upload error", error as Error, {
+                    fileUploadId,
+                    fileName: s3FileName,
+                    patientId,
+                });
                 await cancelWithError("Error while processing file upload", fileUploadId);
             }
         },
@@ -333,7 +346,12 @@ export function useFileUpload(): UseFileUploadReturn {
                     await handleCompleteTags(key, uploadId, fileUploadId, key);
                 }
             } catch (error) {
-                console.error("Resume upload error:", error);
+                logger.error("Resume upload error", error as Error, {
+                    fileUploadId,
+                    key,
+                    uploadId,
+                    currentPartIndex: startPartIndex,
+                });
                 await cancelWithError("Error while processing file upload", fileUploadId);
             }
         },
@@ -356,13 +374,17 @@ export function useFileUpload(): UseFileUploadReturn {
                         await handleFileUpload(file, patientId, fileUploadId, fileName);
                     }
                 } catch (error) {
-                    console.error("Queue processing error:", error);
+                    logger.error("Queue processing error", error as Error, {
+                        fileUploadId,
+                        fileName,
+                        isFileResume,
+                    });
                     await cancelWithError("Error while processing file upload", fileUploadId);
                 }
             }
             setIsUploadInProgress(false);
         } catch (error) {
-            console.error("Queue loop error:", error);
+            logger.error("Queue loop error", error as Error);
             setIsUploadInProgress(false);
         }
     }, [handleFileUpload, handleFileUploadResume, cancelWithError]);
@@ -407,7 +429,12 @@ export function useFileUpload(): UseFileUploadReturn {
                         });
                     }
                 } catch (error) {
-                    console.error("Error creating file upload record:", error);
+                    logger.error("Error creating file upload record", error as Error, {
+                        fileName,
+                        originalFileName,
+                        fileType,
+                        fileSize: file.size,
+                    });
                     const axiosError = error as AxiosError<{ message?: string }>;
                     const message = axiosError.response?.data?.message || "Error while creating file upload";
                     window.electronAPI?.showErrorBox("File Upload Error", message);
@@ -485,7 +512,11 @@ export function useFileUpload(): UseFileUploadReturn {
                     processQueue();
                 }
             } catch (error) {
-                console.error("Resume error:", error);
+                logger.error("Resume upload error", error as Error, {
+                    fileUploadId: fileInfo.fileUploadId,
+                    fileName: fileInfo.fileName,
+                    filePath: fileInfo.filePath,
+                });
                 window.electronAPI?.showErrorBox("File Not Found", "File is not present in the stored location");
             }
         },
@@ -520,7 +551,10 @@ export function useFileUpload(): UseFileUploadReturn {
                     }
                 }
             } catch (error) {
-                console.error("Cancel error:", error);
+                logger.error("Cancel upload error", error as Error, {
+                    fileUploadId,
+                    status,
+                });
             }
         },
         [updateIsUploading, updateKeyObj]

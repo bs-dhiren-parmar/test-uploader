@@ -1,4 +1,5 @@
 import axios, { AxiosResponse, AxiosError } from "axios";
+import { logger } from "../utils/encryptedLogger";
 import type { ApiResponse, AuthResponse } from "../types";
 
 /**
@@ -36,7 +37,9 @@ export const logoutUser = async (baseUrl: string, apiKey: string): Promise<Axios
     } catch (error) {
         // Silently fail on logout errors
         const axiosError = error as AxiosError;
-        console.error("Logout error:", axiosError.message);
+        logger.warn("Logout error", axiosError, {
+            baseUrl,
+        });
         return null;
     }
 };

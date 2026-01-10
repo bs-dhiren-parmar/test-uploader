@@ -5,6 +5,11 @@ import type { SingleValue, GroupBase } from 'react-select';
 import { searchPatients, getPatientById, addSampleId } from '../../services/patientService';
 import type { Patient, PatientData } from '../../types';
 import { reactSelectStyles } from '../../utils/reactSelectStyles';
+import { SAMPLE_ID_REGEX } from '../../utils/validation';
+import { logger } from '../../utils/encryptedLogger';
+
+// Regex for final validation (requires at least one character)
+const SAMPLE_ID_REGEX_REQUIRED = /^[a-zA-Z0-9_-]+$/;
 
 interface PatientOption {
     value: string;
@@ -33,6 +38,7 @@ const AssignPatientsModal: React.FC<AssignPatientsModalProps> = ({ onClose, onSu
     const [selectedVisitOption, setSelectedVisitOption] = useState<SelectOption | null>(null);
     const [selectedSampleOption, setSelectedSampleOption] = useState<SelectOption | null>(null);
     const [newSampleName, setNewSampleName] = useState('');
+    const [sampleNameError, setSampleNameError] = useState<string | null>(null);
     
     // API state
     const [patientData, setPatientData] = useState<PatientData | null>(null);
@@ -82,7 +88,10 @@ const AssignPatientsModal: React.FC<AssignPatientsModalProps> = ({ onClose, onSu
                 },
             };
         } catch (err) {
-            console.error('Error fetching patients:', err);
+            logger.error('Error fetching patients', err as Error, {
+                searchInput: inputValue,
+                page,
+            });
             return {
                 options: [],
                 hasMore: false,
@@ -108,7 +117,9 @@ const AssignPatientsModal: React.FC<AssignPatientsModalProps> = ({ onClose, onSu
                     setPatientData(response.data.data);
                 }
             } catch (err) {
-                console.error('Error fetching patient visits:', err);
+                logger.error('Error fetching patient visits', err as Error, {
+                    patientId: selectedPatientOption?.value,
+                });
                 setError('Failed to load visits');
             } finally {
                 setLoadingVisits(false);
@@ -150,11 +161,29 @@ const AssignPatientsModal: React.FC<AssignPatientsModalProps> = ({ onClose, onSu
         setSelectedSampleOption(option);
     };
 
+    const handleSampleNameChange = (value: string) => {
+        setNewSampleName(value);
+        
+        // Real-time validation for sample ID
+        if (value && !SAMPLE_ID_REGEX.test(value)) {
+            setSampleNameError('Sample ID can only contain letters, numbers, underscores (_), and hyphens (-)');
+        } else {
+            setSampleNameError(null);
+        }
+    };
+
     const handleCreateSample = async () => {
         if (!newSampleName.trim() || !selectedPatientOption || !selectedVisitOption) return;
         
+        // Validate sample name format before creating
+        if (!SAMPLE_ID_REGEX_REQUIRED.test(newSampleName.trim())) {
+            setSampleNameError('Sample ID can only contain letters, numbers, underscores (_), and hyphens (-)');
+            return;
+        }
+        
         setCreatingSample(true);
         setError(null);
+        setSampleNameError(null);
         
         try {
             const response = await addSampleId(selectedPatientOption.value, selectedVisitOption.value, newSampleName.trim());
@@ -168,9 +197,14 @@ const AssignPatientsModal: React.FC<AssignPatientsModalProps> = ({ onClose, onSu
                 const newSample = newSampleName.trim();
                 setSelectedSampleOption({ value: newSample, label: newSample });
                 setNewSampleName('');
+                setSampleNameError(null);
             }
         } catch (err) {
-            console.error('Error creating sample:', err);
+            logger.error('Error creating sample', err as Error, {
+                patientId: selectedPatientOption?.value,
+                visitId: selectedVisitOption?.value,
+                sampleId: newSampleName,
+            });
             setError('Failed to create sample');
         } finally {
             setCreatingSample(false);
@@ -276,20 +310,25 @@ const AssignPatientsModal: React.FC<AssignPatientsModalProps> = ({ onClose, onSu
                             <div className="create-sample-group">
                                 <input
                                     type="text"
-                                    className="create-sample-input"
+                                    className={`create-sample-input ${sampleNameError ? 'error' : ''}`}
                                     placeholder="Create New Sample"
                                     value={newSampleName}
-                                    onChange={(e) => setNewSampleName(e.target.value)}
+                                    onChange={(e) => handleSampleNameChange(e.target.value)}
                                     disabled={!selectedVisitOption || !!selectedSampleOption || creatingSimple || isSubmitting}
                                 />
                                 <button 
                                     className="btn-create" 
                                     onClick={handleCreateSample}
-                                    disabled={!newSampleName.trim() || !selectedVisitOption || !!selectedSampleOption || creatingSimple || isSubmitting}
+                                    disabled={!newSampleName.trim() || !selectedVisitOption || !!selectedSampleOption || creatingSimple || isSubmitting || !!sampleNameError}
                                 >
                                     {creatingSimple ? 'Creating...' : 'Create'}
                                 </button>
                             </div>
+                            {sampleNameError && (
+                                <span className="field-error" style={{ display: 'block', marginTop: '5px', color: 'red', fontSize: '12px' }}>
+                                    {sampleNameError}
+                                </span>
+                            )}
                         </div>
 
                         {/* <div className="form-group">

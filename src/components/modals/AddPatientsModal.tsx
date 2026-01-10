@@ -1,9 +1,10 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
 import Select from 'react-select';
 import type { SingleValue } from 'react-select';
 import { reactSelectStyles } from '../../utils/reactSelectStyles';
 import { createPatient, createPatientVisit, fetchPatientFromLims } from '../../services/patientService';
-import { validatePatientForm, validateVisitForm, validateSamples, generateVisitId, getAgeFromDob } from '../../utils/validation';
+import { validatePatientForm, validateVisitForm, validateSamples, generateVisitId, getAgeFromDob, MRN_REGEX, SAMPLE_ID_REGEX } from '../../utils/validation';
+import { logger } from '../../utils/encryptedLogger';
 import {
     LIFE_STATUS_OPTIONS,
     GENDER_OPTIONS,
@@ -163,6 +164,71 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
     
     // Expanded sample state for accordion
     const [expandedSample, setExpandedSample] = useState<number>(-1);
+    
+    // Ref for wizard body to enable scrolling
+    const wizardBodyRef = useRef<HTMLDivElement>(null);
+
+    // Helper function to scroll to an element
+    const scrollToElement = useCallback((element: Element | null) => {
+        if (!element || !wizardBodyRef.current) return;
+        
+        element.scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+        });
+        
+        // Try to focus the input/textarea within the element
+        const input = element.querySelector('input, textarea, select');
+        if (input instanceof HTMLInputElement || input instanceof HTMLTextAreaElement || input instanceof HTMLSelectElement) {
+            // Small delay to ensure scroll completes before focus
+            setTimeout(() => {
+                input.focus();
+            }, 300);
+        }
+    }, []);
+
+    // Function to scroll to first error field
+    const scrollToFirstError = useCallback(() => {
+        // Use setTimeout to ensure DOM is updated with error states
+        setTimeout(() => {
+            if (!wizardBodyRef.current) return;
+            
+            // Find first field-error span (most reliable indicator)
+            const firstErrorSpan = wizardBodyRef.current.querySelector('.field-error');
+            if (firstErrorSpan) {
+                // Find the form-group containing this error
+                let formGroup = firstErrorSpan.closest('.form-group');
+                if (!formGroup) {
+                    formGroup = firstErrorSpan.parentElement;
+                }
+                
+                // If error is in a sample card, expand it first
+                const sampleCard = firstErrorSpan.closest('.sample-card');
+                if (sampleCard && !sampleCard.classList.contains('expanded')) {
+                    const sampleIndexMatch = sampleCard.getAttribute('data-sample-index');
+                    if (sampleIndexMatch !== null) {
+                        const index = parseInt(sampleIndexMatch, 10);
+                        if (!isNaN(index)) {
+                            setExpandedSample(index);
+                            // Wait a bit for the accordion to expand before scrolling
+                            setTimeout(() => {
+                                scrollToElement(formGroup || firstErrorSpan);
+                            }, 200);
+                            return;
+                        }
+                    }
+                }
+                
+                scrollToElement(formGroup || firstErrorSpan);
+            } else {
+                // Fallback: find first input/select with error class
+                const firstErrorField = wizardBodyRef.current.querySelector('.form-input.error, .form-textarea.error');
+                if (firstErrorField) {
+                    scrollToElement(firstErrorField);
+                }
+            }
+        }, 100);
+    }, [scrollToElement]);
 
     // Reset form when modal closes
     const resetForm = useCallback(() => {
@@ -192,8 +258,23 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
     // Patient form handlers
     const handlePatientChange = (field: keyof PatientFormData, value: string | SelectOption[] | AgeData) => {
         setPatientForm(prev => ({ ...prev, [field]: value }));
-        // Clear error when field is edited
-        if (patientErrors[field]) {
+        
+        // Real-time validation for MRN
+        if (field === 'mrn' && typeof value === 'string') {
+            if (value && !MRN_REGEX.test(value)) {
+                setPatientErrors(prev => ({
+                    ...prev,
+                    mrn: 'MRN can only contain letters, numbers, underscores (_), and hyphens (-)'
+                }));
+            } else if (patientErrors.mrn) {
+                setPatientErrors(prev => {
+                    const newErrors = { ...prev };
+                    delete newErrors.mrn;
+                    return newErrors;
+                });
+            }
+        } else if (patientErrors[field]) {
+            // Clear error when field is edited
             setPatientErrors(prev => {
                 const newErrors = { ...prev };
                 delete newErrors[field];
@@ -298,7 +379,9 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
                 setFetchError(response.data?.message || 'Failed to fetch patient details from LIMS');
             }
         } catch (error) {
-            console.error('Error fetching from LIMS:', error);
+            logger.error('Error fetching from LIMS', error as Error, {
+                mrn: patientForm.mrn,
+            });
             setFetchError('An error occurred while fetching from LIMS for MRN: ' + patientForm.mrn);
             setPatientForm({
                 ...patientForm,
@@ -310,14 +393,39 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
     };
 
     // Visit form handlers
-    const handleVisitChange = (field: keyof VisitFormData, value: string | SelectOption[] | GaData) => {
+    const handleVisitChange = (field: keyof VisitFormData, value: string | SelectOption[] | GaData | null) => {
         setVisitForm(prev => ({ ...prev, [field]: value }));
+        
+        // Clear error when field is edited
         if (visitErrors[field]) {
             setVisitErrors(prev => {
                 const newErrors = { ...prev };
                 delete newErrors[field];
                 return newErrors;
             });
+        }
+        
+        // Clear related conditional field errors when condition changes
+        if (field === 'pregnancy') {
+            // Clear pregnancy-related field errors when pregnancy status changes
+            setVisitErrors(prev => {
+                const newErrors = { ...prev };
+                delete newErrors.lmp_date;
+                delete newErrors.sample_collection_date;
+                return newErrors;
+            });
+        }
+        
+        if (field === 'clinical_indication') {
+            // Clear other_clinical_indication error when clinical_indication changes
+            const indicationValue = typeof value === 'string' ? value : '';
+            if (!indicationValue.includes('Others')) {
+                setVisitErrors(prev => {
+                    const newErrors = { ...prev };
+                    delete newErrors.other_clinical_indication;
+                    return newErrors;
+                });
+            }
         }
     };
 
@@ -395,14 +503,32 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
                 i === index ? { ...sample, [field]: value } : sample
             ),
         }));
-        // Clear sample error
-        const errorKey = `samples[${index}].${field}`;
-        if (sampleErrors[errorKey]) {
-            setSampleErrors(prev => {
-                const newErrors = { ...prev };
-                delete newErrors[errorKey];
-                return newErrors;
-            });
+        
+        // Real-time validation for sample_id
+        if (field === 'sample_id') {
+            const errorKey = `samples[${index}].${field}`;
+            if (value && !SAMPLE_ID_REGEX.test(value)) {
+                setSampleErrors(prev => ({
+                    ...prev,
+                    [errorKey]: 'Sample ID can only contain letters, numbers, underscores (_), and hyphens (-)'
+                }));
+            } else if (sampleErrors[errorKey]) {
+                setSampleErrors(prev => {
+                    const newErrors = { ...prev };
+                    delete newErrors[errorKey];
+                    return newErrors;
+                });
+            }
+        } else {
+            // Clear sample error for other fields
+            const errorKey = `samples[${index}].${field}`;
+            if (sampleErrors[errorKey]) {
+                setSampleErrors(prev => {
+                    const newErrors = { ...prev };
+                    delete newErrors[errorKey];
+                    return newErrors;
+                });
+            }
         }
     };
 
@@ -517,18 +643,23 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
             const { isValid, errors } = await validatePatientForm(patientForm);
             if (!isValid) {
                 setPatientErrors(errors);
+                scrollToFirstError();
                 return;
             }
-            // Update visit form with MRN-based visit ID
+            // Update visit form with MRN-based visit ID only if visit_id is empty
+            // This preserves user-entered visit_id if they've already set it
             setVisitForm(prev => ({
                 ...prev,
-                visit_id: generateVisitId(patientForm.mrn),
+                visit_id: prev.visit_id?.trim() || generateVisitId(patientForm.mrn),
             }));
             setCurrentStep(2);
         } else if (currentStep === 2) {
             const { isValid, errors } = await validateVisitForm(visitForm);
             if (!isValid) {
                 setVisitErrors(errors);
+                // Log validation errors for debugging
+                console.log('Visit form validation errors:', errors);
+                scrollToFirstError();
                 return;
             }
             setCurrentStep(3);
@@ -548,6 +679,7 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
         const { isValid: samplesValid, errors: samplesErrors } = await validateSamples(visitForm.samples);
         if (!samplesValid) {
             setSampleErrors(samplesErrors);
+            scrollToFirstError();
             return;
         }
 
@@ -582,7 +714,11 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
             handleClose();
             onSuccess?.();
         } catch (error) {
-            console.error('Error creating patient:', error);
+            logger.error('Error creating patient', error as Error, {
+                mrn: patientForm.mrn,
+                visitId: visitForm.visit_id,
+                samplesCount: visitForm.samples.length,
+            });
             setSubmitError(error instanceof Error ? error.message : 'An error occurred while saving');
         } finally {
             setIsSubmitting(false);
@@ -623,7 +759,7 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
                 </div>
 
 
-                <div className="modal-body wizard-body">
+                <div className="modal-body wizard-body" ref={wizardBodyRef}>
                     {submitError && (
                         <div className="wizard-error">
                             {submitError}
@@ -969,7 +1105,7 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
                                         options={CANCER_TYPE_OPTIONS}
                                         value={CANCER_TYPE_OPTIONS.find(o => o.value === visitForm.cancer_type) || null}
                                         onChange={(option: SingleValue<SelectOption>) => 
-                                            handleVisitChange('cancer_type', option?.value || '')
+                                            handleVisitChange('cancer_type', option?.value || null)
                                         }
                                         placeholder="Select cancer type"
                                         isClearable
@@ -1031,22 +1167,32 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
 
                                     <div className="form-row">
                                         <div className="form-group">
-                                            <label className="form-label">LMP Date</label>
+                                            <label className="form-label">
+                                                LMP Date {visitForm.pregnancy === 'Yes' && <span className="required">*</span>}
+                                            </label>
                                             <input
                                                 type="date"
-                                                className="form-input"
+                                                className={`form-input ${visitErrors.lmp_date ? 'error' : ''}`}
                                                 value={visitForm.lmp_date}
                                                 onChange={(e) => handleLmpDateChange(e.target.value)}
                                             />
+                                            {visitErrors.lmp_date && (
+                                                <span className="field-error">{visitErrors.lmp_date}</span>
+                                            )}
                                         </div>
                                         <div className="form-group">
-                                            <label className="form-label">Sample Collection Date</label>
+                                            <label className="form-label">
+                                                Sample Collection Date {visitForm.pregnancy === 'Yes' && <span className="required">*</span>}
+                                            </label>
                                             <input
                                                 type="date"
-                                                className="form-input"
+                                                className={`form-input ${visitErrors.sample_collection_date ? 'error' : ''}`}
                                                 value={visitForm.sample_collection_date}
                                                 onChange={(e) => handleSampleCollectionDateChange(e.target.value)}
                                             />
+                                            {visitErrors.sample_collection_date && (
+                                                <span className="field-error">{visitErrors.sample_collection_date}</span>
+                                            )}
                                         </div>
                                     </div>
 
@@ -1191,14 +1337,19 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
                                     {showOtherClinicalIndication && (
                                         <div className="form-row">
                                             <div className="form-group">
-                                                <label className="form-label">Other Clinical Indication</label>
+                                                <label className="form-label">
+                                                    Other Clinical Indication <span className="required">*</span>
+                                                </label>
                                                 <input
                                                     type="text"
-                                                    className="form-input"
+                                                    className={`form-input ${visitErrors.other_clinical_indication ? 'error' : ''}`}
                                                     value={visitForm.other_clinical_indication}
                                                     onChange={(e) => handleVisitChange('other_clinical_indication', e.target.value)}
                                                     placeholder="Enter other clinical indication"
                                                 />
+                                                {visitErrors.other_clinical_indication && (
+                                                    <span className="field-error">{visitErrors.other_clinical_indication}</span>
+                                                )}
                                             </div>
                                             <div className="form-group">
                                                 {/* Empty for alignment */}
@@ -1249,7 +1400,7 @@ const AddPatientsModal: React.FC<AddPatientsModalProps> = ({ isOpen, onClose, on
                             ) : (
                                 <div className="samples-list">
                                     {visitForm.samples.map((sample, sampleIndex) => (
-                                        <div key={sampleIndex} className={`sample-card ${expandedSample === sampleIndex ? 'expanded' : ''}`}>
+                                        <div key={sampleIndex} className={`sample-card ${expandedSample === sampleIndex ? 'expanded' : ''}`} data-sample-index={sampleIndex}>
                                             <div 
                                                 className="sample-card-header"
                                                 onClick={() => toggleSampleExpand(sampleIndex)}

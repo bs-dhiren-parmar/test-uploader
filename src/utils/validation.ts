@@ -12,7 +12,7 @@ const ageSchema = yup.object().shape({
         .test('valid-months', 'Months should be between 0 and 12', (value) => {
             if (!value || value === '') return true;
             const months = parseInt(value, 10);
-            return !isNaN(months) && months >= 0 && months <= 12;
+            return !isNaN(months) && months >= 0 && months <= 11;
         }),
     d: yup.string()
         .test('valid-days', 'Days should be between 0 and 31', (value) => {
@@ -22,11 +22,23 @@ const ageSchema = yup.object().shape({
         }),
 });
 
+// MRN validation regex for real-time validation (allows empty during typing)
+export const MRN_REGEX = /^[a-zA-Z0-9_-]*$/;
+// MRN validation regex for schema validation (requires at least one character)
+const MRN_REGEX_REQUIRED = /^[a-zA-Z0-9_-]+$/;
+
+// Sample ID validation regex for real-time validation (allows empty during typing)
+export const SAMPLE_ID_REGEX = /^[a-zA-Z0-9_-]*$/;
+// Sample ID validation regex for schema validation (requires at least one character)
+const SAMPLE_ID_REGEX_REQUIRED = /^[a-zA-Z0-9_-]+$/;
+
 // Patient form validation schema
 export const patientSchema = yup.object().shape({
     first_name: yup.string().required('Name is required'),
     last_name: yup.string(),
-    mrn: yup.string().required('MRN is required'),
+    mrn: yup.string()
+        .required('MRN is required')
+        .matches(MRN_REGEX_REQUIRED, 'MRN can only contain letters, numbers, underscores (_), and hyphens (-)'),
     life_status: yup.string().required('Life Status is required'),
     dob: yup.string().when('life_status', {
         is: 'Dead',
@@ -66,24 +78,41 @@ export const patientSchema = yup.object().shape({
 
 // Visit form validation schema
 export const visitSchema = yup.object().shape({
-    visit_id: yup.string().required('Visit ID is required'),
+    visit_id: yup.string()
+        .required('Visit ID is required')
+        .trim()
+        .min(1, 'Visit ID cannot be empty'),
     clinical_history: yup.string(),
     pri_physician: yup.string(),
     location: yup.string(),
     pregnancy: yup.string(),
-    cancer_type: yup.string(),
+    cancer_type: yup.string().nullable(),
     visit_type: yup.string(),
     reason_visit: yup.string(),
+    // Conditional validations for pregnancy fields
+    lmp_date: yup.string().when('pregnancy', {
+        is: 'Yes',
+        then: (schema) => schema.required('LMP Date is required when pregnancy is Yes'),
+        otherwise: (schema) => schema,
+    }),
+    sample_collection_date: yup.string().when('pregnancy', {
+        is: 'Yes',
+        then: (schema) => schema.required('Sample Collection Date is required when pregnancy is Yes'),
+        otherwise: (schema) => schema,
+    }),
+    // Conditional validation for other clinical indication
+    other_clinical_indication: yup.string().when('clinical_indication', {
+        is: (val: string) => val && val.includes('Others'),
+        then: (schema) => schema.required('Other Clinical Indication is required when "Others" is selected'),
+        otherwise: (schema) => schema,
+    }),
 });
-
-// Sample ID validation regex
-const SAMPLE_ID_REGEX = /^[a-zA-Z0-9_-]+$/;
 
 // Sample validation schema
 export const sampleSchema = yup.object().shape({
     sample_id: yup.string()
         .required('Sample ID is required')
-        .matches(SAMPLE_ID_REGEX, 'Sample ID can only contain letters, numbers, underscores (_), and hyphens (-)'),
+        .matches(SAMPLE_ID_REGEX_REQUIRED, 'Sample ID can only contain letters, numbers, underscores (_), and hyphens (-)'),
     sample_type: yup.string(),
     sample_quality: yup.string(),
     ref_id1: yup.string(),
@@ -142,7 +171,14 @@ export const validatePatientForm = async (data: PatientFormData): Promise<{ isVa
  */
 export const validateVisitForm = async (data: VisitFormData): Promise<{ isValid: boolean; errors: Record<string, string> }> => {
     try {
-        await visitSchema.validate(data, { abortEarly: false });
+        // Trim visit_id before validation
+        const dataToValidate = {
+            ...data,
+            visit_id: data.visit_id?.trim() || '',
+            // Ensure clinical_indication is a string for validation
+            clinical_indication: typeof data.clinical_indication === 'string' ? data.clinical_indication : '',
+        };
+        await visitSchema.validate(dataToValidate, { abortEarly: false });
         return { isValid: true, errors: {} };
     } catch (err) {
         if (err instanceof yup.ValidationError) {
@@ -187,7 +223,7 @@ export const validateSamples = async (samples: SampleFormData[]): Promise<{ isVa
         }
         
         // Validate sample_id format
-        if (!SAMPLE_ID_REGEX.test(sample.sample_id)) {
+        if (!SAMPLE_ID_REGEX_REQUIRED.test(sample.sample_id)) {
             errors[`samples[${i}].sample_id`] = 'Sample ID can only contain letters, numbers, underscores (_), and hyphens (-)';
         }
         

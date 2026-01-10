@@ -2,6 +2,7 @@ import React, { useState, useEffect, ChangeEvent, FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import { validateEmail, validateUrl } from "../utils/helpers";
+import { logger } from "../utils/encryptedLogger";
 import type { LoginFormData, LoginFormErrors } from "../types";
 import Icon from "../components/Icon";
 import Tooltip from "../components/Tooltip";
@@ -117,6 +118,10 @@ const Login: React.FC = () => {
                 window.electronAPI?.showErrorBox("Login Failed", result.message || "Credentials provided are not correct");
             }
         } catch (error) {
+            logger.error("Login error", error as Error, {
+                email: formData.email,
+                baseUrl: formData.baseUrl,
+            });
             window.electronAPI?.showErrorBox("Login Error", "An error occurred during login. Please try again.");
         } finally {
             setIsSubmitting(false);

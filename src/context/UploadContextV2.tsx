@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useRef, useCallback, ReactNode } from "react";
 import axios, { CancelTokenSource, AxiosError } from "axios";
+import { logger } from "../utils/encryptedLogger";
 import Queue from "../utils/Queue";
 import { CHUNK_SIZE } from "../utils/constants";
 import { getCurrentDateTime, getCurrentChunk, getChunkCount } from "../utils/helpers";
@@ -103,6 +104,7 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
 
     const fileUploadQueue = useRef<Queue<QueueItem>>(new Queue<QueueItem>());
     const cancelTokenSource = useRef<CancelTokenSource | null>(null);
+    const cancelTokensRef = useRef<Record<string, CancelTokenSource>>({});
 
     // Use refs to avoid stale closure issues in async callbacks
     const isCancelAvailableRef = useRef<Record<string, boolean>>({});
@@ -165,6 +167,12 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
     const handlePartUpload = useCallback(
         async (file: File, partIndex: number, chunkLen: number, key: string, uploadId: string, fileUploadId: string): Promise<boolean> => {
             try {
+                // Check if cancelled before starting this part upload
+                if (!isCancelAvailableRef.current[fileUploadId]) {
+                    console.log(`Upload cancelled for ${fileUploadId}, skipping part ${partIndex + 1}`);
+                    return false;
+                }
+
                 const prog = parseFloat(String(((partIndex + 1) * 100) / chunkLen)).toFixed(2) + "%";
 
                 const signedUploadResponse = await getSignedUrlsForAllPart(key, uploadId, partIndex + 1);
@@ -175,12 +183,16 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
                     console.log("navigator.onLine: ", navigator.onLine);
                     try {
                         if (navigator.onLine) {
-                            cancelTokenSource.current = axios.CancelToken.source();
+                            // Create cancel token for this specific file upload
+                            const cancelToken = axios.CancelToken.source();
+                            cancelTokensRef.current[fileUploadId] = cancelToken;
+                            cancelTokenSource.current = cancelToken; // Keep for backward compatibility
+                            
                             const chunkUploadRes = await uploadChunk(
                                 signedUploadResponse.data.data,
                                 fileData,
                                 file.type || "application/octet-stream",
-                                cancelTokenSource.current.token
+                                cancelToken.token
                             );
                             console.log("chunkUploadRes", chunkUploadRes);
                             if (navigator.onLine) {
@@ -197,7 +209,13 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
                                     throw new Error("ETag not found in S3 response. Check S3 CORS configuration.");
                                 }
                                 
-                                // V2: Update file upload progress
+                                // Check again if cancelled after upload completes (before saving tags)
+                                if (!isCancelAvailableRef.current[fileUploadId]) {
+                                    console.log(`Upload cancelled for ${fileUploadId} after part ${partIndex + 1} upload, but saving tags`);
+                                    // Still save the tag for the completed part before stopping
+                                }
+                                
+                                // V2: Update file upload progress (save tags even if cancelled, so progress is saved)
                                 await updateFileUploadV2(fileUploadId, {
                                     file_progress: prog,
                                     tag: etag.replace(/"/gi, ""),
@@ -213,7 +231,140 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
                                     }
                                 });
                                 
-                                return true;
+                                // Return false if cancelled (so loop stops), true if still active
+                                return isCancelAvailableRef.current[fileUploadId];
+                            }
+                        } else {
+                            showNetworkError();
+                            return false;
+                        }
+                    } catch (error) {
+                        const axiosError = error as AxiosError;
+                        if (axiosError.code !== "ERR_CANCELED") {
+                            throw error;
+                        }
+                        return false;
+                    }
+                } else {
+                    throw new Error("Error while getting signed URL");
+                }
+            } catch (error) {
+                throw error;
+            }
+            return false;
+        },
+        [showNetworkError]
+    );
+
+    // ==================== Part Upload From Disk (for large file resume) ====================
+
+    /**
+     * Handle part upload by reading chunks directly from disk.
+     * This is memory-efficient and works for files of any size.
+     * Used for resume uploads instead of loading entire file into memory.
+     */
+    const handlePartUploadFromDisk = useCallback(
+        async (
+            filePath: string, 
+            fileSize: number,
+            fileType: string,
+            partIndex: number, 
+            chunkLen: number, 
+            key: string, 
+            uploadId: string, 
+            fileUploadId: string
+        ): Promise<boolean> => {
+            try {
+                // Check if cancelled before starting this part upload
+                if (!isCancelAvailableRef.current[fileUploadId]) {
+                    console.log(`Upload cancelled for ${fileUploadId}, skipping part ${partIndex + 1}`);
+                    return false;
+                }
+
+                const prog = parseFloat(String(((partIndex + 1) * 100) / chunkLen)).toFixed(2) + "%";
+
+                const signedUploadResponse = await getSignedUrlsForAllPart(key, uploadId, partIndex + 1);
+
+                if (signedUploadResponse.data?.success && signedUploadResponse.data?.data) {
+                    // Calculate chunk offset and length
+                    const offset = partIndex * CHUNK_SIZE;
+                    const remainingBytes = fileSize - offset;
+                    const chunkLength = Math.min(CHUNK_SIZE, remainingBytes);
+
+                    console.log(`Reading chunk ${partIndex + 1}/${chunkLen} from disk: offset=${offset}, length=${chunkLength}`);
+
+                    // Read chunk from disk using Electron API (memory-efficient)
+                    if (!window.electronAPI?.readFileChunk) {
+                        throw new Error("readFileChunk API not available - please restart the application");
+                    }
+
+                    const chunkResult = await window.electronAPI.readFileChunk(filePath, offset, chunkLength);
+                    
+                    if (!chunkResult.success || !chunkResult.data) {
+                        throw new Error(chunkResult.error || "Failed to read file chunk from disk");
+                    }
+
+                    // Convert base64 chunk to Blob
+                    const binaryString = atob(chunkResult.data);
+                    const bytes = new Uint8Array(binaryString.length);
+                    for (let i = 0; i < binaryString.length; i++) {
+                        bytes[i] = binaryString.charCodeAt(i);
+                    }
+                    const fileData = new Blob([bytes]);
+
+                    console.log("signedUploadResponse", signedUploadResponse);
+                    console.log("navigator.onLine: ", navigator.onLine);
+                    console.log("Chunk size from disk:", fileData.size);
+
+                    try {
+                        if (navigator.onLine) {
+                            // Create cancel token for this specific file upload
+                            const cancelToken = axios.CancelToken.source();
+                            cancelTokensRef.current[fileUploadId] = cancelToken;
+                            cancelTokenSource.current = cancelToken;
+                            
+                            const chunkUploadRes = await uploadChunk(
+                                signedUploadResponse.data.data,
+                                fileData,
+                                fileType || "application/octet-stream",
+                                cancelToken.token
+                            );
+                            console.log("chunkUploadRes", chunkUploadRes);
+
+                            if (navigator.onLine) {
+                                const etag = chunkUploadRes?.headers?.etag;
+                                
+                                if (!etag) {
+                                    console.error(
+                                        "ETag header not found in S3 response. " +
+                                        "Ensure S3 bucket CORS configuration exposes 'ETag' header. " +
+                                        "Response headers:", chunkUploadRes?.headers
+                                    );
+                                    throw new Error("ETag not found in S3 response. Check S3 CORS configuration.");
+                                }
+                                
+                                // Check again if cancelled after upload completes
+                                if (!isCancelAvailableRef.current[fileUploadId]) {
+                                    console.log(`Upload cancelled for ${fileUploadId} after part ${partIndex + 1} upload, but saving tags`);
+                                }
+                                
+                                // Update file upload progress
+                                await updateFileUploadV2(fileUploadId, {
+                                    file_progress: prog,
+                                    tag: etag.replace(/"/gi, ""),
+                                    currentIndex: partIndex + 1,
+                                });
+                                
+                                // Notify all registered callbacks
+                                partUploadCallbacksRef.current.forEach(callback => {
+                                    try {
+                                        callback();
+                                    } catch (error) {
+                                        console.error('Error in part upload callback:', error);
+                                    }
+                                });
+                                
+                                return isCancelAvailableRef.current[fileUploadId];
                             }
                         } else {
                             showNetworkError();
@@ -297,6 +448,11 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
 
     // ==================== File Upload Handler ====================
 
+    /**
+     * Handle normal file upload (from FileDropTab)
+     * Uses File object directly from browser - no base64 conversion needed
+     * This function is NOT affected by the chunked conversion logic in resumeUpload
+     */
     const handleFileUpload = useCallback(
         async (file: File, patientId: string | undefined, fileUploadId: string, fileName?: string): Promise<void> => {
             try {
@@ -329,7 +485,7 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
                     });
 
                     setKeyObj((prev) => {
-                        const updated = { ...prev, [fileUploadId]: { key, uplaodId: uploadId } };
+                        const updated = { ...prev, [fileUploadId]: { key, uploadId: uploadId } };
                         updateKeyObj(updated);
                         return updated;
                     });
@@ -345,7 +501,9 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
                         }
 
                         const success = await handlePartUpload(file, partIndex, chunkLen, key, uploadId, fileUploadId);
-                        if (!success && !isCancelAvailableRef.current[fileUploadId]) {
+                        // If upload was cancelled or part upload failed, stop processing
+                        if (!success || !isCancelAvailableRef.current[fileUploadId]) {
+                            console.log(`Stopping upload for ${fileUploadId} at part ${partIndex + 1}`);
                             return;
                         }
                     }
@@ -364,11 +522,11 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
         [showNetworkError, handlePartUpload, handleCompleteTags, cancelWithError, updateKeyObj]
     );
 
-    // ==================== Resume Upload Handler ====================
+    // ==================== Resume Upload Handler (File-based - for small files) ====================
 
     const handleFileUploadResume = useCallback(
         async (file: File, fileUploadId: string, key: string, uploadId: string, currentPartIndex: number | string): Promise<void> => {
-            const startPartIndex = typeof currentPartIndex === "string" ? parseInt(currentPartIndex) || 0 : currentPartIndex || 0;
+            let startPartIndex = typeof currentPartIndex === "string" ? parseInt(currentPartIndex) || 0 : currentPartIndex || 0;
 
             try {
                 const chunkLen = getChunkCount(file.size, CHUNK_SIZE);
@@ -384,6 +542,60 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
                     updateStatus: true,
                 });
 
+                // Always verify if uploadId is still valid before resuming
+                // The uploadId might be invalid if the multipart upload was aborted
+                let actualUploadId = uploadId;
+                let actualKey = key;
+                let needsNewUpload = false;
+
+                // Test if uploadId is valid by trying to get a signed URL for the next part to upload
+                // Use a timeout to prevent hanging if the uploadId is invalid
+                const testPartNumber = startPartIndex > 0 ? startPartIndex + 1 : 1;
+                try {
+                    const testPromise = getSignedUrlsForAllPart(key, uploadId, testPartNumber);
+                    const timeoutPromise = new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error("UploadId validation timeout")), 5000)
+                    );
+                    
+                    const testResponse = await Promise.race([testPromise, timeoutPromise]) as Awaited<ReturnType<typeof getSignedUrlsForAllPart>>;
+                    if (!testResponse.data?.success) {
+                        // UploadId is invalid, need to initiate new multipart upload
+                        needsNewUpload = true;
+                    }
+                } catch (testError) {
+                    // UploadId is invalid (likely aborted) or request timed out, need to initiate new multipart upload
+                    console.warn("Existing uploadId is invalid or timed out, initiating new multipart upload:", testError);
+                    needsNewUpload = true;
+                }
+
+                if (needsNewUpload) {
+                    // Initiate a new multipart upload
+                    const newKey = `augmet_uploader/${fileUploadId}_${getCurrentDateTime()}/${file.name}`;
+                    const initialResponse = await initiateMultipartUpload(newKey);
+                    
+                    if (initialResponse.data?.success && initialResponse.data?.data) {
+                        actualUploadId = initialResponse.data.data.UploadId;
+                        actualKey = newKey;
+                        
+                        // Update file upload with new AWS details
+                        await updateFileUploadV2(fileUploadId, {
+                            aws_upload_id: actualUploadId,
+                            aws_key: actualKey,
+                        });
+
+                        setKeyObj((prev) => {
+                            const updated = { ...prev, [fileUploadId]: { key: actualKey, uploadId: actualUploadId } };
+                            updateKeyObj(updated);
+                            return updated;
+                        });
+                        
+                        // If we're creating a new upload, we must start from part 0
+                        startPartIndex = 0;
+                    } else {
+                        throw new Error("Error while initiating new multipart upload");
+                    }
+                }
+
                 for (let partIndex = startPartIndex; partIndex < chunkLen; partIndex++) {
                     if (!navigator.onLine) {
                         showNetworkError();
@@ -394,18 +606,142 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
                         return;
                     }
 
-                    await handlePartUpload(file, partIndex, chunkLen, key, uploadId, fileUploadId);
+                    const success = await handlePartUpload(file, partIndex, chunkLen, actualKey, actualUploadId, fileUploadId);
+                    // If upload was cancelled or part upload failed, stop processing
+                    if (!success || !isCancelAvailableRef.current[fileUploadId]) {
+                        console.log(`Stopping resume upload for ${fileUploadId} at part ${partIndex + 1}`);
+                        return;
+                    }
                 }
 
                 if (isCancelAvailableRef.current[fileUploadId]) {
-                    await handleCompleteTags(key, uploadId, fileUploadId, key);
+                    await handleCompleteTags(actualKey, actualUploadId, fileUploadId, file.name);
                 }
             } catch (error) {
                 console.error("Resume upload error:", error);
                 await cancelWithError("Error while processing file upload", fileUploadId);
             }
         },
-        [showNetworkError, handlePartUpload, handleCompleteTags, cancelWithError]
+        [showNetworkError, handlePartUpload, handleCompleteTags, cancelWithError, updateKeyObj]
+    );
+
+    // ==================== Resume Upload Handler (Disk-based - for large files) ====================
+
+    /**
+     * Handle resume upload by reading chunks directly from disk.
+     * This is memory-efficient and prevents crashes for large files (>100MB).
+     * Works the same as handleFileUploadResume but reads chunks on-demand from disk
+     * instead of loading the entire file into memory.
+     */
+    const handleFileUploadResumeFromDisk = useCallback(
+        async (
+            filePath: string,
+            fileSize: number,
+            fileType: string,
+            fileName: string,
+            fileUploadId: string,
+            key: string,
+            uploadId: string,
+            currentPartIndex: number | string
+        ): Promise<void> => {
+            let startPartIndex = typeof currentPartIndex === "string" ? parseInt(currentPartIndex) || 0 : currentPartIndex || 0;
+
+            try {
+                const chunkLen = getChunkCount(fileSize, CHUNK_SIZE);
+
+                console.log(`Starting disk-based resume upload: ${fileName}, size=${fileSize}, chunks=${chunkLen}, startIndex=${startPartIndex}`);
+
+                if (!navigator.onLine) {
+                    showNetworkError();
+                    return;
+                }
+
+                // V2: Update file upload status to IN_PROGRESS (force update)
+                await updateFileUploadV2(fileUploadId, {
+                    status: "IN_PROGRESS",
+                    updateStatus: true,
+                });
+
+                // Always verify if uploadId is still valid before resuming
+                let actualUploadId = uploadId;
+                let actualKey = key;
+                let needsNewUpload = false;
+
+                // Test if uploadId is valid
+                const testPartNumber = startPartIndex > 0 ? startPartIndex + 1 : 1;
+                const testResponse = await getSignedUrlsForAllPart(key, uploadId, testPartNumber);
+                if (!testResponse.data?.success) {
+                    console.warn("Existing uploadId is invalid, initiating new multipart upload");
+                    needsNewUpload = true;
+                }
+
+                if (needsNewUpload) {
+                    // Initiate a new multipart upload
+                    const newKey = `augmet_uploader/${fileUploadId}_${getCurrentDateTime()}/${fileName}`;
+                    const initialResponse = await initiateMultipartUpload(newKey);
+                    
+                    if (initialResponse.data?.success && initialResponse.data?.data) {
+                        actualUploadId = initialResponse.data.data.UploadId;
+                        actualKey = newKey;
+                        
+                        // Update file upload with new AWS details
+                        await updateFileUploadV2(fileUploadId, {
+                            aws_upload_id: actualUploadId,
+                            aws_key: actualKey,
+                        });
+
+                        setKeyObj((prev) => {
+                            const updated = { ...prev, [fileUploadId]: { key: actualKey, uploadId: actualUploadId } };
+                            updateKeyObj(updated);
+                            return updated;
+                        });
+                        
+                        // If we're creating a new upload, we must start from part 0
+                        startPartIndex = 0;
+                        console.log(`Created new multipart upload, starting from part 0`);
+                    } else {
+                        throw new Error("Error while initiating new multipart upload");
+                    }
+                }
+
+                // Upload each chunk by reading directly from disk (memory-efficient)
+                for (let partIndex = startPartIndex; partIndex < chunkLen; partIndex++) {
+                    if (!navigator.onLine) {
+                        showNetworkError();
+                        return;
+                    }
+
+                    if (!isCancelAvailableRef.current[fileUploadId]) {
+                        return;
+                    }
+
+                    // Use disk-based chunk upload instead of File.slice()
+                    const success = await handlePartUploadFromDisk(
+                        filePath,
+                        fileSize,
+                        fileType,
+                        partIndex,
+                        chunkLen,
+                        actualKey,
+                        actualUploadId,
+                        fileUploadId
+                    );
+
+                    if (!success || !isCancelAvailableRef.current[fileUploadId]) {
+                        console.log(`Stopping disk-based resume upload for ${fileUploadId} at part ${partIndex + 1}`);
+                        return;
+                    }
+                }
+
+                if (isCancelAvailableRef.current[fileUploadId]) {
+                    await handleCompleteTags(actualKey, actualUploadId, fileUploadId, fileName);
+                }
+            } catch (error) {
+                console.error("Disk-based resume upload error:", error);
+                await cancelWithError("Error while processing file upload", fileUploadId);
+            }
+        },
+        [showNetworkError, handlePartUploadFromDisk, handleCompleteTags, cancelWithError, updateKeyObj]
     );
 
     // ==================== Queue Processing ====================
@@ -416,14 +752,49 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
                 const item = fileUploadQueue.current.dequeue();
                 if (!item) break;
 
-                const { file, patientId, fileUploadId, isFileResume, key, uploadId, currentPartIndex, fileName } = item;
+                const { 
+                    file, 
+                    patientId, 
+                    fileUploadId, 
+                    isFileResume, 
+                    key, 
+                    uploadId, 
+                    currentPartIndex, 
+                    fileName,
+                    // Disk-based resume upload fields
+                    filePath,
+                    fileSize,
+                    fileType
+                } = item;
 
                 try {
                     if (isFileResume && key && uploadId) {
-                        await handleFileUploadResume(file, fileUploadId, key, uploadId, currentPartIndex || 0);
-                    } else {
-                        // V2: Support uploads without patient
+                        // Check if this is a disk-based resume (filePath is set) or file-based resume
+                        if (filePath && fileSize) {
+                            // Disk-based resume: read chunks directly from disk (memory-efficient)
+                            console.log(`Processing disk-based resume upload for ${fileUploadId}`);
+                            await handleFileUploadResumeFromDisk(
+                                filePath,
+                                fileSize,
+                                fileType || "application/octet-stream",
+                                fileName || "unknown",
+                                fileUploadId,
+                                key,
+                                uploadId,
+                                currentPartIndex || 0
+                            );
+                        } else if (file) {
+                            // File-based resume (legacy): use File object
+                            console.log(`Processing file-based resume upload for ${fileUploadId}`);
+                            await handleFileUploadResume(file, fileUploadId, key, uploadId, currentPartIndex || 0);
+                        } else {
+                            throw new Error("Resume upload requires either file or filePath");
+                        }
+                    } else if (file) {
+                        // Normal upload: use File object directly
                         await handleFileUpload(file, patientId, fileUploadId, fileName);
+                    } else {
+                        throw new Error("Normal upload requires a file");
                     }
                 } catch (error) {
                     console.error("Queue processing error:", error);
@@ -435,7 +806,7 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
             console.error("Queue loop error:", error);
             setIsUploadInProgress(false);
         }
-    }, [handleFileUpload, handleFileUploadResume, cancelWithError]);
+    }, [handleFileUpload, handleFileUploadResume, handleFileUploadResumeFromDisk, cancelWithError]);
 
     // ==================== Core Upload Functions ====================
 
@@ -446,17 +817,32 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
     const addFilesToQueue = useCallback(
         async (filesData: FileToUploadV2[]): Promise<void> => {
             const orgId = localStorage.getItem("org_id");
+            
+            if (!orgId) {
+                const errorMsg = "Organization ID not found. Please log in again.";
+                console.error(errorMsg);
+                window.electronAPI?.showErrorBox("Upload Error", errorMsg);
+                throw new Error(errorMsg);
+            }
+
+            const successfulUploads: string[] = [];
+            const failedUploads: Array<{ fileName: string; error: string }> = [];
 
             for (const fileData of filesData) {
                 const { file, fileName, originalFileName, fileType, patientId, visitId, sampleId } = fileData;
+
+                // Get file path - in Electron, file.path might not be available for input[type=file]
+                // So we use empty string as it's optional for V2 API
+                // Declared outside try-catch so it's accessible in catch block for error logging
+                const filePath = (file as File & { path?: string }).path || "";
 
                 try {
                     // V2: Create file upload record (patient_id is optional)
                     const result = await createFileUploadV2({
                         file_name: fileName,
                         original_file_name: originalFileName || file.name,
-                        local_file_path: (file as File & { path?: string }).path || "",
-                        org_id: orgId || "",
+                        local_file_path: filePath,
+                        org_id: orgId,
                         patient_id: patientId || undefined,
                         sample_id: sampleId || undefined,
                         visit_id: visitId || undefined,
@@ -481,16 +867,58 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
                             fileUploadId,
                             fileName,
                         });
+                        
+                        successfulUploads.push(fileName);
+                    } else {
+                        const errorMsg = result.data?.message || "Failed to create file upload record";
+                        failedUploads.push({ fileName, error: errorMsg });
+                        console.error(`Failed to create upload for ${fileName}:`, result.data);
                     }
                 } catch (error) {
                     console.error("Error creating file upload record:", error);
-                    const axiosError = error as AxiosError<{ message?: string }>;
-                    const message = axiosError.response?.data?.message || "Error while creating file upload";
-                    window.electronAPI?.showErrorBox("File Upload Error", message);
+                    const axiosError = error as AxiosError<{ message?: string; error?: string }>;
+                    const errorMessage = axiosError.response?.data?.message 
+                        || axiosError.response?.data?.error 
+                        || axiosError.message 
+                        || "Error while creating file upload";
+                    
+                    // Log detailed error to encrypted log
+                    logger.error("Error creating file upload record", error as Error, {
+                        fileName: fileName,
+                        originalFileName: originalFileName,
+                        fileType: fileType,
+                        fileSize: file.size,
+                        hasPath: !!filePath,
+                        filePath: filePath,
+                        orgId: orgId,
+                        errorMessage: errorMessage,
+                        response: axiosError.response?.data,
+                        status: axiosError.response?.status,
+                    });
+                    
+                    failedUploads.push({ fileName, error: errorMessage });
                 }
             }
 
-            if (!isUploadInProgressRef.current && !fileUploadQueue.current.isEmpty) {
+            // Show error if any files failed
+            if (failedUploads.length > 0) {
+                const errorDetails = failedUploads
+                    .map(f => `${f.fileName}: ${f.error}`)
+                    .join("\n");
+                const errorMsg = failedUploads.length === filesData.length
+                    ? `Failed to add all files:\n${errorDetails}`
+                    : `Failed to add ${failedUploads.length} file(s):\n${errorDetails}`;
+                
+                window.electronAPI?.showErrorBox("File Upload Error", errorMsg);
+                
+                // If all files failed, throw error to prevent queue processing
+                if (failedUploads.length === filesData.length) {
+                    throw new Error(errorMsg);
+                }
+            }
+
+            // Only start queue processing if we have successful uploads
+            if (successfulUploads.length > 0 && !isUploadInProgressRef.current && !fileUploadQueue.current.isEmpty) {
                 setIsUploadInProgress(true);
                 processQueue();
             }
@@ -500,34 +928,44 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
 
     /**
      * Resume an interrupted upload
+     * 
+     * NEW APPROACH (memory-efficient):
+     * Instead of reading the entire file into memory (which causes crashes for large files),
+     * we now store the file path and read chunks directly from disk during upload.
+     * This works identically to normal multipart uploads - only difference is the chunk source.
+     * 
+     * Flow:
+     * 1. Validate file exists at stored path
+     * 2. Get file size for chunk calculation
+     * 3. Store file path info in queue (NOT the file data)
+     * 4. During upload, chunks are read on-demand from disk via Electron API
+     * 
+     * This approach works for files of ANY size without memory issues.
      */
     const resumeUpload = useCallback(
         async (fileInfo: ResumeUploadInfo): Promise<void> => {
-            const { fileUploadId, fileName, filePath, uploadId, key, currentPartIndex } = fileInfo;
+            const { fileUploadId, fileName, filePath, uploadId, key, currentPartIndex, fileType } = fileInfo;
 
             try {
-                if (!window.electronAPI?.readLocalFile) {
-                    throw new Error("File system access not available");
+                // Validate that we have the required Electron APIs
+                if (!window.electronAPI?.getFileStats || !window.electronAPI?.readFileChunk) {
+                    throw new Error("File system access not available. Please restart the application.");
                 }
 
+                // Step 1: Validate file exists and get its size
                 const statsResult = await window.electronAPI.getFileStats(filePath);
                 if (!statsResult.success || !statsResult.exists) {
-                    throw new Error("File not found at stored location");
+                    throw new Error("File not found at stored location. The file may have been moved or deleted.");
                 }
 
-                const fileResult = await window.electronAPI.readLocalFile(filePath);
-                if (!fileResult.success || !fileResult.data) {
-                    throw new Error(fileResult.error || "Failed to read file");
+                const fileSize = statsResult.size || 0;
+                if (fileSize === 0) {
+                    throw new Error("File is empty or could not determine file size.");
                 }
 
-                const binaryString = atob(fileResult.data);
-                const bytes = new Uint8Array(binaryString.length);
-                for (let i = 0; i < binaryString.length; i++) {
-                    bytes[i] = binaryString.charCodeAt(i);
-                }
-                const blob = new Blob([bytes]);
-                const file = new File([blob], fileName);
+                console.log(`Resume upload: ${fileName}, size=${fileSize}, path=${filePath}`);
 
+                // Step 2: Update UI state
                 setIsUploading((prev) => {
                     const updated = { ...prev, [fileUploadId]: false };
                     updateIsUploading(updated);
@@ -536,20 +974,26 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
 
                 setIsCancelAvailable((prev) => ({ ...prev, [fileUploadId]: true }));
 
-                // V2: Update file upload status to QUEUED
+                // Step 3: Update file upload status to QUEUED
                 await updateFileUploadV2(fileUploadId, {
                     status: "QUEUED",
                     updateStatus: true,
                 });
 
+                // Step 4: Add to queue with file PATH info (NOT file data)
+                // The queue processor will read chunks from disk on-demand
                 fileUploadQueue.current.enqueue({
-                    file,
+                    // No file object needed - we'll read from disk
                     key,
                     fileUploadId,
                     uploadId,
                     isFileResume: true,
                     currentPartIndex,
                     fileName,
+                    // Disk-based upload fields
+                    filePath,
+                    fileSize,
+                    fileType: fileType || "application/octet-stream",
                 });
 
                 if (!isUploadInProgressRef.current) {
@@ -558,18 +1002,50 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
                 }
             } catch (error) {
                 console.error("Resume error:", error);
-                window.electronAPI?.showErrorBox("File Not Found", "File is not present in the stored location");
+                const errorMessage = error instanceof Error 
+                    ? error.message 
+                    : "File is not present in the stored location";
+                
+                // Update status to ERROR in database before re-throwing
+                try {
+                    await updateFileUploadV2(fileUploadId, {
+                        status: "ERROR",
+                    });
+                } catch (updateError) {
+                    console.error("Failed to update status to ERROR in resumeUpload:", updateError);
+                }
+                
+                // Re-throw the error so the caller can handle it
+                // This prevents silent failures that could cause crashes
+                throw error;
             }
         },
         [processQueue, updateIsUploading]
     );
 
     /**
-     * Cancel an upload
+     * Cancel an upload (Resume-Safe)
      * V2: Uses the new cancel API and removes file from queue
+     * 
+     * IMPORTANT: This cancel is designed to preserve uploaded parts for resume capability.
+     * 
+     * Flow:
+     * 1. Set cancel flag to stop further parts (current part will finish and save its tag)
+     * 2. Remove file from queue to prevent further parts from being processed
+     * 3. Update DB status to CANCEL (does NOT abort S3 multipart upload)
+     * 4. Clean up local state
+     * 
+     * Resume-Safe Guarantees:
+     * - We do NOT cancel the current part's HTTP request (cancelToken not used)
+     * - Current uploading part completes and saves its ETag to the database
+     * - S3 multipart upload is NOT aborted - uploaded parts remain on S3
+     * - The cancelFileUploadV2 API only updates DB status, preserving aws_upload_id and tags
+     * - On resume, existing parts are reused via their saved ETags
      */
     const cancelUpload = useCallback(
         async (fileUploadId: string, status: string): Promise<void> => {
+            // Step 1: Set cancel flag first to stop further part uploads
+            // This allows the current part (if uploading) to finish and save its tag
             setIsCancelAvailable((prev) => ({ ...prev, [fileUploadId]: false }));
             setIsUploading((prev) => {
                 const updated = { ...prev, [fileUploadId]: true };
@@ -578,7 +1054,8 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
             });
 
             try {
-                // Remove file from the upload queue if it's still queued
+                // Step 2: Remove file from the upload queue if it's still queued
+                // This prevents further parts from being processed
                 const removedCount = fileUploadQueue.current.removeBy(
                     (item) => item.fileUploadId === fileUploadId
                 );
@@ -587,23 +1064,18 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
                     console.log(`Removed ${removedCount} item(s) from queue for fileUploadId: ${fileUploadId}`);
                 }
 
-                // V2: Use the new cancel API to mark as CANCEL status
-                const result = await cancelFileUploadV2(fileUploadId);
+                // Step 3: Update DB status to CANCEL via API
+                // This happens after setting cancel flag, so current part can finish and save tags
+                // The API will update the status and preserve current progress/tags
+                await cancelFileUploadV2(fileUploadId);
 
+                // Step 4: Clean up state after DB update
                 setKeyObj((prev) => {
                     const updated = { ...prev };
                     delete updated[fileUploadId];
                     updateKeyObj(updated);
                     return updated;
                 });
-
-                if (result.data?.success) {
-                    // Cancel the ongoing chunk upload if in progress
-                    if (cancelTokenSource.current && status === "IN_PROGRESS") {
-                        cancelTokenSource.current.cancel();
-                        cancelTokenSource.current = null;
-                    }
-                }
 
                 // Clean up isUploading state
                 setIsUploading((prev) => {
@@ -613,15 +1085,16 @@ export const UploadProviderV2: React.FC<UploadProviderV2Props> = ({ children }) 
                     return updated;
                 });
 
-                // Clean up isCancelAvailable state
-                setIsCancelAvailable((prev) => {
-                    const updated = { ...prev };
-                    delete updated[fileUploadId];
-                    return updated;
-                });
+                // Note: We keep isCancelAvailable set to false for this fileUploadId
+                // so that if the upload loop is still running, it will stop after current part
+                // The cleanup will happen naturally when the upload loop completes
+
+                console.log(`Cancel flag set for ${fileUploadId}. Current part will finish and save tag, then upload will stop. S3 multipart upload preserved for resume.`);
 
             } catch (error) {
                 console.error("Cancel error:", error);
+                // Even if API call fails, the cancel flag is set, so upload will stop
+                // after current part completes
             }
         },
         [updateIsUploading, updateKeyObj]

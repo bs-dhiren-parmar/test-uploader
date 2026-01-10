@@ -1,5 +1,6 @@
 import axios, { AxiosResponse, CancelToken } from "axios";
 import api, { getBaseUrl, getApiKey } from "./api";
+import { logger } from "../utils/encryptedLogger";
 import type { ApiResponse, FileUploadsResponse, InitiateUploadResponse, FileUpload, KeyObj, StatusListResponse, AssignListResponse, AssociationListResponse } from "../types";
 
 // ==================== V2 API Request Interfaces ====================
@@ -243,7 +244,7 @@ export const getSignedUrl = async (key: string, mimetype: string): Promise<Axios
  */
 export const initiateMultipartUpload = async (key: string): Promise<AxiosResponse<ApiResponse<InitiateUploadResponse>>> => {
     const baseUrl = getBaseUrl();
-    return api.get(`${baseUrl}/api/file-upload/intiate-multipart-upload`, {
+    return api.get(`${baseUrl}/api/v2/file-upload/initiate-multipart-upload`, {
         params: { key },
     });
 };
@@ -253,7 +254,7 @@ export const initiateMultipartUpload = async (key: string): Promise<AxiosRespons
  */
 export const getSignedUrlsForAllPart = async (key: string, uploadId: string, partNumber: number): Promise<AxiosResponse<ApiResponse<string>>> => {
     const baseUrl = getBaseUrl();
-    return api.get(`${baseUrl}/api/file-upload/genrate-signed-urls`, {
+    return api.get(`${baseUrl}/api/v2/file-upload/generate-signed-urls`, {
         params: { key, uploadId, PartNumber: partNumber },
     });
 };
@@ -283,7 +284,7 @@ export const cancelDeleteFileUpload = async (
     return api.post(`${baseUrl}/api/file-upload/cancel-delete/${id}`, {
         status,
         key: uploadData?.key || null,
-        uploadId: uploadData?.uplaodId || null,
+        uploadId: uploadData?.uploadId || null,
         errorMessage,
     });
 };
@@ -356,7 +357,7 @@ export const uploadChunk = async (signedUrl: string, data: Blob, contentType: st
             request?: unknown;
         };
         
-        console.error("uploadChunk: S3 upload failed", {
+        logger.error("S3 upload chunk failed", error as Error, {
             message: axiosError.message,
             code: axiosError.code,
             response: axiosError.response ? {
@@ -364,13 +365,18 @@ export const uploadChunk = async (signedUrl: string, data: Blob, contentType: st
                 data: axiosError.response.data,
             } : "No response (likely CORS or network error)",
             hasRequest: !!axiosError.request,
+            contentType,
+            chunkSize: data.size,
         });
         
         // If no response, it's likely a CORS issue
         if (!axiosError.response && axiosError.request) {
-            console.error(
-                "uploadChunk: CORS ERROR - The S3 bucket likely does not have CORS configured. " +
-                "Please add CORS configuration to expose headers: ETag, Content-Length, Content-Type"
+            logger.error(
+                "CORS ERROR - The S3 bucket likely does not have CORS configured",
+                new Error("CORS configuration missing"),
+                {
+                    message: "Please add CORS configuration to expose headers: ETag, Content-Length, Content-Type",
+                }
             );
         }
         

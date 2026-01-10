@@ -1,88 +1,22 @@
-# [3.1.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v3.0.0...v3.1.0) (2026-01-05)
+# [2.0.0](https://github.com/Basesolve/augmet-desktop/compare/v1.0.3...v2.0.0) (2026-01-05)
 
 
 ### Features
 
-* Add react-select-async-paginate and optimize Dashboard component ([28baebb](https://github.com/bs-dhiren-parmar/test-uploader/commit/28baebb150f66d5f61ed4e3630e7053566d89e8d))
-* Add Yup as a dependency in package.json and package-lock.json ([e93c8ce](https://github.com/bs-dhiren-parmar/test-uploader/commit/e93c8ce784c9e4ea30e40533a9802afb897f7047))
-* Enhance check-release job conditions in workflow ([45e9dbd](https://github.com/bs-dhiren-parmar/test-uploader/commit/45e9dbdfa03bb25063d22419677ba6b87533d707))
-* Fix typo in project title in README ([2dbaa38](https://github.com/bs-dhiren-parmar/test-uploader/commit/2dbaa3805f3e7a96e5d06a0ae23ca327e2f6be1a))
-* Refactor check-release job conditions and permissions ([091b1c8](https://github.com/bs-dhiren-parmar/test-uploader/commit/091b1c81031127e60702cd628a83ba235e8a37ed))
-* update ([f1aaae8](https://github.com/bs-dhiren-parmar/test-uploader/commit/f1aaae8c1c4f4a0f592694dd232bbab57510bcac))
-* Update application structure and styles ([8147e29](https://github.com/bs-dhiren-parmar/test-uploader/commit/8147e29177ebb36a16444c8603691154499847ce))
-* Update check-release conditions in workflow ([aa23dcb](https://github.com/bs-dhiren-parmar/test-uploader/commit/aa23dcb587af3fb327c95776d01bbd7938f9abfc))
-* Update package-lock.json and package.json with new dependencies ([0cf38c3](https://github.com/bs-dhiren-parmar/test-uploader/commit/0cf38c36c1728dd2e76ac227564f16bdfbc01fda))
-
-# [3.0.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v2.0.0...v3.0.0) (2025-12-19)
-
-
-### Bug Fixes
-
-* creating new major version. ([27655c7](https://github.com/bs-dhiren-parmar/test-uploader/commit/27655c7d195ef7f65b71ab83105f6d5383117c69))
-* Fix formatting issue in main.yml ([c6c4dc8](https://github.com/bs-dhiren-parmar/test-uploader/commit/c6c4dc8a412c648dc82a81d6e5edddb7461a543d))
+* initialize Augmet Desktop Uploader with Electron, React, and TypeScript ([8c1c87d](https://github.com/Basesolve/augmet-desktop/commit/8c1c87d268ef452ff3c4c1479ea556c64e319a79))
+* update API endpoints and enhance workflow conditions ([59433cd](https://github.com/Basesolve/augmet-desktop/commit/59433cdb16ce88b5908003820e11e082ca1d88c4))
+* update GitHub Actions workflow for Augmet Desktop App Build ([ed1e234](https://github.com/Basesolve/augmet-desktop/commit/ed1e234572343545f9941ba5fce542abd96e7c75))
+* update repository URL in package.json ([7ae42b7](https://github.com/Basesolve/augmet-desktop/commit/7ae42b7fe3fdaacd5fadfdef06dde0ecdeda907c))
+* enhance Electron app build process and update package configuration ([54751b4](https://github.com/Basesolve/augmet-desktop/commit/54751b4cc0326962036e18e74238c58a9d6d4519))
 
 
 ### BREAKING CHANGES
 
-* expecting major release version change
-
-# [2.0.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.2.1...v2.0.0) (2025-12-19)
-
-
-### Performance Improvements
-
-* **pencil:** remove graphiteWidth option ([060da5d](https://github.com/bs-dhiren-parmar/test-uploader/commit/060da5dfc626e98464b0552e26f8b340401c1dd7))
-
-
-### BREAKING CHANGES
-
-* **pencil:** The graphiteWidth option has been removed.
-The default graphite width of 10mm is always used for performance reasons.
-
-## [1.2.1](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.2.0...v1.2.1) (2025-12-19)
-
-
-### Bug Fixes
-
-*  formatting of BREAKING CHANGE in README. BREAKING CHANGE ([8e7bee4](https://github.com/bs-dhiren-parmar/test-uploader/commit/8e7bee4fed40d8024d3039e574eb62d852448264))
-
-# [1.2.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.1.1...v1.2.0) (2025-12-19)
-
-
-### Features
-
-* Update commit type for breaking changes in README BREAKING CAHNGE: ([218f621](https://github.com/bs-dhiren-parmar/test-uploader/commit/218f6211508be606e0d1916a0c68338b8eabac1c))
-
-## [1.1.1](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.1.0...v1.1.1) (2025-12-19)
-
-
-### Performance Improvements
-
-* Mojor release check ([9860b55](https://github.com/bs-dhiren-parmar/test-uploader/commit/9860b558677d99522f6941e86d4962511b09f9be))
-
-# [1.1.0](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.0.1...v1.1.0) (2025-12-19)
-
-
-### Features
-
-*  Update README.md for clarity and commit message conventions ([9a07203](https://github.com/bs-dhiren-parmar/test-uploader/commit/9a07203b2e6aa3f1480ef00c3f16e997f3e1b7cc))
-
-## [1.0.1](https://github.com/bs-dhiren-parmar/test-uploader/compare/v1.0.0...v1.0.1) (2025-12-19)
-
-
-### Bug Fixes
-
-* Document commit message conventions ([2801f77](https://github.com/bs-dhiren-parmar/test-uploader/commit/2801f7700286f7147c6d86ba76f604ee71a14f2f))
-
-# 1.0.0 (2025-12-19)
-
-
-### Features
-
-* Fix typo in project title in README.md ([d02f8fe](https://github.com/bs-dhiren-parmar/test-uploader/commit/d02f8fe58cb37515c1c69a6ffd900270f4258b7e))
-* Initial commit - Augmet Uploader v2.0.0 ([ee14ba5](https://github.com/bs-dhiren-parmar/test-uploader/commit/ee14ba5a380b96c5adfe0c22435a5dcedebbd289))
-* Update permissions in GitHub Actions workflow to allow write access ([ca25a28](https://github.com/bs-dhiren-parmar/test-uploader/commit/ca25a282ebdaebef0c2861c627450ae729ade22e))
-* Update repository URL in package.json ([8a36456](https://github.com/bs-dhiren-parmar/test-uploader/commit/8a364565d5449ff6eb555fc2c7baf0bcae7dbc50))
+* creaking change
+* Updating to new version.
+* This commit lays the foundation for the REACT Augmet Desktop Uploader application.
+* This commit lays the foundation for the REACT Augmet Desktop Uploader application.
+* Changes to the build process and package configuration may affect deployment.
 
 # Changelog
 
